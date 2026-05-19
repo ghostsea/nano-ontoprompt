@@ -37,3 +37,10 @@ Thumbs.db
 # Logs
 *.log
 celerybeat-schedule
+
+# Internal / agent-only files
+AGENTS.md
+CLAUDE.md
+nano-ontoprompt-requirements.md
+prompt-harness-rules-for-coding-agent.md
+docs/superpowers/
