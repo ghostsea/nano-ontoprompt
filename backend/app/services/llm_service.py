@@ -87,7 +87,7 @@ def _call_llm(provider: str, api_key: str, api_base: str | None, model: str, mes
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
         resp = client.messages.create(
-            model=model, max_tokens=4096,
+            model=model, max_tokens=8192,
             system=messages[0]["content"],
             messages=[{"role": "user", "content": messages[1]["content"] + "\n\n```json\n{"}],
         )
@@ -101,16 +101,46 @@ def _call_llm(provider: str, api_key: str, api_base: str | None, model: str, mes
         resp = client.chat.completions.create(
             model=model, messages=messages,
             response_format={"type": "json_object"},
-            timeout=180,
-            max_tokens=8192,
+            timeout=300,
+            max_tokens=16384,
         )
         return resp.choices[0].message.content
 
+
 def _parse_response(raw: str) -> dict:
+    if not raw:
+        raise ValueError("Empty LLM response")
+
+    # Strip markdown code fences (```json ... ``` or ``` ... ```)
+    text = raw.strip()
+    text = re.sub(r'^```(?:json)?\s*\n?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\n?```\s*$', '', text).strip()
+
+    # Remove control characters that are illegal inside JSON strings
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+
+    # Fast path: well-formed JSON
     try:
-        return json.loads(raw)
+        return json.loads(text)
     except json.JSONDecodeError:
-        match = re.search(r'\{.*\}', raw, re.DOTALL)
-        if match:
-            return json.loads(match.group())
-        raise ValueError(f"Cannot parse LLM response as JSON: {raw[:200]}")
+        pass
+
+    # Try json_repair (handles unescaped quotes, truncated output, etc.)
+    try:
+        from json_repair import repair_json
+        repaired = repair_json(text)
+        result = json.loads(repaired)
+        if isinstance(result, dict):
+            return result
+    except Exception:
+        pass
+
+    # Last resort: slice from first { to last } and try again
+    start, end = text.find('{'), text.rfind('}')
+    if start != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError(f"Cannot parse LLM response as JSON: {raw[:300]}")

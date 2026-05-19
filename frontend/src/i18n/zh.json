@@ -75,7 +75,7 @@
     "back": "← 返回"
   },
   "files": {
-    "uploading": "上传中...",
+    "uploading": "正在上传 {{current}} / {{total}}…",
     "drop_release": "释放以上传",
     "drag_hint": "拖拽文件到此处，或点击选择",
     "supported": "支持 PDF, DOCX, XLSX, CSV, PPTX, PNG, JPG, MD",

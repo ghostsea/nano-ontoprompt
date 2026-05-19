@@ -149,6 +149,11 @@ def run_extraction(self, task_id: str):
         if not combined_text.strip():
             task.status = "failed"; task.error = "No text content found in files"; db.commit(); return
 
+        # Strip control characters and normalise whitespace so the LLM doesn't
+        # embed raw bytes that would later break its own JSON output.
+        import re as _re
+        combined_text = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', combined_text)
+
         model_cfg = db.query(ModelConfig).filter(ModelConfig.id == task.model_id).first()
         prompt    = db.query(Prompt).filter(Prompt.id == task.prompt_id).first()
         if not model_cfg or not prompt:

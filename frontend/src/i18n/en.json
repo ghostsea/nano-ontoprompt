@@ -75,7 +75,7 @@
     "back": "← Back"
   },
   "files": {
-    "uploading": "Uploading...",
+    "uploading": "Uploading {{current}} / {{total}}…",
     "drop_release": "Drop to upload",
     "drag_hint": "Drag files here or click to select",
     "supported": "Supports PDF, DOCX, XLSX, CSV, PPTX, PNG, JPG, MD",

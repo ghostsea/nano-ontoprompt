@@ -9,7 +9,7 @@ import { Trash2, Upload } from 'lucide-react'
 export default function FilesTab({ ontologyId }: { ontologyId: string }) {
   const { t } = useTranslation()
   const qc = useQueryClient()
-  const [uploading, setUploading] = useState(false)
+  const [uploadState, setUploadState] = useState<{ filename: string; current: number; total: number; pct: number } | null>(null)
 
   const { data: files = [], isLoading } = useQuery({
     queryKey: ['files', ontologyId],
@@ -22,19 +22,25 @@ export default function FilesTab({ ontologyId }: { ontologyId: string }) {
   })
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    setUploading(true)
-    for (const file of acceptedFiles) {
+    const total = acceptedFiles.length
+    for (let i = 0; i < total; i++) {
+      const file = acceptedFiles[i]
+      setUploadState({ filename: file.name, current: i + 1, total, pct: 0 })
       const fd = new FormData()
       fd.append('file', file)
       try {
         await apiClient.post(`/ontologies/${ontologyId}/files`, fd, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (evt: any) => {
+            const pct = evt.total ? Math.round((evt.loaded / evt.total) * 100) : 0
+            setUploadState(prev => prev ? { ...prev, pct } : null)
+          },
         } as any)
       } catch (e) {
         console.error('Upload failed:', file.name, e)
       }
     }
-    setUploading(false)
+    setUploadState(null)
     qc.invalidateQueries({ queryKey: ['files', ontologyId] })
   }, [ontologyId, qc])
 
@@ -64,14 +70,35 @@ export default function FilesTab({ ontologyId }: { ontologyId: string }) {
     <div className="space-y-4">
       <div {...getRootProps()}
         className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+          uploadState ? 'border-black bg-gray-50 cursor-default' :
           isDragActive ? 'border-black bg-gray-50' : 'border-gray-300 hover:border-gray-400'
         }`}>
-        <input {...getInputProps()} />
+        <input {...getInputProps()} disabled={!!uploadState} />
         <Upload className="mx-auto mb-2 text-gray-400" size={32} />
-        <p className="text-sm text-gray-500">
-          {uploading ? t('files.uploading') : isDragActive ? t('files.drop_release') : t('files.drag_hint')}
-        </p>
-        <p className="text-xs text-gray-400 mt-1">{t('files.supported')}</p>
+        {uploadState ? (
+          <div className="space-y-2">
+            <p className="text-sm text-gray-600 font-medium">
+              {t('files.uploading', { current: uploadState.current, total: uploadState.total })}
+            </p>
+            <p className="text-xs text-gray-400 truncate max-w-xs mx-auto" title={uploadState.filename}>
+              {uploadState.filename}
+            </p>
+            <div className="w-full max-w-xs mx-auto bg-gray-200 rounded-full h-1.5">
+              <div
+                className="h-1.5 rounded-full bg-black transition-all duration-200"
+                style={{ width: `${uploadState.pct}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-400">{uploadState.pct}%</p>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-gray-500">
+              {isDragActive ? t('files.drop_release') : t('files.drag_hint')}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">{t('files.supported')}</p>
+          </>
+        )}
       </div>
 
       {isLoading ? <p className="text-gray-400 text-sm">{t('common.loading')}</p> : (
