@@ -4,7 +4,7 @@ import type { OntologyListItem, OntologyDetail, Entity, LogicRule, Action, Uploa
 export const ontologyApi = {
   list: (params?: { name?: string; page?: number; page_size?: number }) =>
     apiClient.get<{ items: OntologyListItem[]; total: number; page: number; page_size: number }>('/ontologies', { params }),
-  create: (body: { name: string; domain: string; description?: string }) =>
+  create: (body: { name: string; domain: string; description?: string; build_mode?: string }) =>
     apiClient.post<OntologyDetail>('/ontologies', body),
   get: (id: string) => apiClient.get<OntologyDetail>(`/ontologies/${id}`),
   update: (id: string, body: Partial<OntologyDetail>) => apiClient.put<OntologyDetail>(`/ontologies/${id}`, body),
@@ -24,6 +24,8 @@ export const ontologyApi = {
   createEntity: (oid: string, body: Partial<Entity>) => apiClient.post<Entity>(`/ontologies/${oid}/entities`, body),
   updateEntity: (oid: string, eid: string, body: Partial<Entity>) => apiClient.put<Entity>(`/ontologies/${oid}/entities/${eid}`, body),
   deleteEntity: (oid: string, eid: string) => apiClient.delete(`/ontologies/${oid}/entities/${eid}`),
+  getEntityRelated: (oid: string, eid: string) =>
+    apiClient.get<{ logic: any[]; actions: any[] }>(`/ontologies/${oid}/entities/${eid}/related`),
 
   // Logic
   listLogic: (oid: string) => apiClient.get<LogicRule[]>(`/ontologies/${oid}/logic`),
