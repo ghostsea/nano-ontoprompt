@@ -7,12 +7,15 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 import type { ModelConfig } from '@/types/ontology'
 import { Trash2, TestTube2, Plus } from 'lucide-react'
 
+const USAGE_TAGS = ['VLM提取', '结构化提取', '宽表分析', 'Ontology Mapping', 'NL-to-Cypher']
+
 export default function ModelsPage() {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<ModelConfig | null>(null)
   const [testResult, setTestResult] = useState<Record<string, string>>({})
+  const [formTags, setFormTags] = useState<string[]>([])
   const { register, handleSubmit, reset, watch } = useForm<any>()
   const modelsField = watch('models_str', '')
 
@@ -25,8 +28,9 @@ export default function ModelsPage() {
     mutationFn: (data: any) => modelApi.create({
       ...data,
       models: data.models_str ? data.models_str.split('\n').map((s: string) => s.trim()).filter(Boolean) : [],
+      usage_tags: formTags,
     }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['models'] }); setShowCreate(false); reset() },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['models'] }); setShowCreate(false); reset(); setFormTags([]) },
   })
 
   const deleteMut = useMutation({
@@ -44,7 +48,7 @@ export default function ModelsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold">{t('model.title')}</h2>
-        <button onClick={() => { setShowCreate(true); reset() }}
+        <button onClick={() => { setShowCreate(true); reset(); setFormTags([]) }}
           className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-lg text-sm">
           <Plus size={14} /> {t('model.create')}
         </button>
@@ -62,6 +66,13 @@ export default function ModelsPage() {
                     <div className="flex gap-1 mt-2 flex-wrap">
                       {m.models.map(mn => (
                         <span key={mn} className="bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded">{mn}</span>
+                      ))}
+                    </div>
+                  )}
+                  {((m as any).usage_tags || []).length > 0 && (
+                    <div className="flex gap-1 flex-wrap mt-1">
+                      {((m as any).usage_tags || []).map((tag: string) => (
+                        <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{tag}</span>
                       ))}
                     </div>
                   )}
@@ -120,6 +131,28 @@ export default function ModelsPage() {
                 <label className="block text-sm font-medium mb-1">{t('model.models')} {t('model.per_line')}</label>
                 <textarea {...register('models_str')} rows={4} placeholder={"gpt-4o\ngpt-4o-mini"}
                   className="w-full border rounded-lg px-3 py-2 text-sm font-mono resize-none" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-2 block">用途标签（可多选）</label>
+                <div className="flex flex-wrap gap-2">
+                  {USAGE_TAGS.map(tag => {
+                    const selected = formTags.includes(tag)
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setFormTags(prev =>
+                          selected ? prev.filter(t => t !== tag) : [...prev, tag]
+                        )}
+                        className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                          selected ? 'bg-black text-white border-black' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 border rounded-lg text-sm">{t('common.cancel')}</button>
