@@ -1,11 +1,14 @@
 """v2 Curated Dataset API — reads from v2_datasets kind=curated"""
 from __future__ import annotations
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.database import SessionLocal
 from app.models.v2.curated import CuratedDataset, CuratedReview
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -34,6 +37,18 @@ def list_curated(db: Session = Depends(get_db)):
     """列出所有 Curated Dataset（从 v2_datasets 读 kind=curated）"""
     from app.models.v2.dataset import Dataset, DatasetVersion
     rows = db.query(Dataset).filter(Dataset.kind == "curated").order_by(Dataset.created_at.desc()).all()
+    # Batch fetch all reviews for displayed datasets to avoid N+1
+    dataset_ids = [r.id for r in rows]
+    all_reviews = db.query(CuratedReview).filter(
+        CuratedReview.curated_dataset_id.in_(dataset_ids)
+    ).order_by(CuratedReview.created_at.desc()).all()
+
+    # Build dict: dataset_id -> latest review
+    review_by_dataset: dict = {}
+    for rev in all_reviews:
+        if rev.curated_dataset_id not in review_by_dataset:
+            review_by_dataset[rev.curated_dataset_id] = rev
+
     result = []
     for r in rows:
         ver = db.query(DatasetVersion).filter(
@@ -43,9 +58,7 @@ def list_curated(db: Session = Depends(get_db)):
         quality = None
         if r.schema_json and isinstance(r.schema_json, dict):
             quality = r.schema_json.get("quality_score")
-        review = db.query(CuratedReview).filter(
-            CuratedReview.curated_dataset_id == r.id
-        ).order_by(CuratedReview.created_at.desc()).first()
+        review = review_by_dataset.get(r.id)
         real_status = review.status if review else "pending_review"
         result.append(CuratedDatasetResponse(
             id=r.id, name=r.name,
@@ -154,8 +167,8 @@ def submit_review(
             from app.services.v2.incremental.orchestrator import IncrementalOrchestrator
             orch = IncrementalOrchestrator(db)
             orch.on_review_approved(review.id)
-        except Exception:
-            pass  # Don't block the approve response if mapping trigger fails
+        except Exception as e:
+            logger.warning(f"Mapping trigger failed after review approve {review.id}: {e}")
 
     return {"review_id": review.id, "status": review.status}
 
