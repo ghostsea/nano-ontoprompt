@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { apiClient } from '@/api/client'
+import { apiClientV2 } from '@/api/client'
 import { Search, Loader2 } from 'lucide-react'
 import OntologySearchBox from '@/components/search/OntologySearchBox'
 import cytoscape from 'cytoscape'
@@ -47,7 +47,7 @@ export default function GraphTabV2({ ontologyId }: { ontologyId: string }) {
   const [queryResult, setQueryResult] = useState<unknown[]>([])
 
   useEffect(() => {
-    apiClient.get(`/api/v2/ontologies/${ontologyId}/graph?limit=200`)
+    apiClientV2.get(`/ontologies/${ontologyId}/graph?limit=200`)
       .then((res: any) => setGraphData(res))
       .catch(() => setGraphData({ nodes: [], edges: [], neo4j_available: false }))
       .finally(() => setLoading(false))
@@ -174,18 +174,31 @@ export default function GraphTabV2({ ontologyId }: { ontologyId: string }) {
       layout: {
         name: 'cose',
         animate: false,
-        nodeRepulsion: () => 5000,
-        idealEdgeLength: () => 80,
-        gravity: 0.3,
+        nodeRepulsion: () => 8000,
+        idealEdgeLength: () => 120,
+        gravity: 0.05,
+        numIter: 1000,
+        nodeDimensionsIncludeLabels: true,
       } as any,
     })
 
     cy.on('tap', 'node', evt => {
       const nodeData = evt.target.data()
-      const entityId: string = nodeData.entityId
-      if (entityId) {
-        navigate(`/ontologies/${ontologyId}/entities/${entityId}`)
-      }
+      cy.elements().removeClass('highlighted dimmed')
+      evt.target.addClass('highlighted')
+      evt.target.neighborhood().addClass('highlighted')
+      evt.target.neighborhood().edges().addClass('highlighted')
+      cy.elements().not('.highlighted').addClass('dimmed')
+    })
+
+    cy.on('tap', function(evt) {
+      if (evt.target === cy) cy.elements().removeClass('highlighted dimmed')
+    })
+
+    // 双击节点 → 跳转实体详情页
+    cy.on('dblclick', 'node', evt => {
+      const nid = evt.target.data().id
+      if (nid) navigate(`/ontologies/${ontologyId}/entities/${nid}`)
     })
 
     cyRef.current = cy
@@ -202,10 +215,10 @@ export default function GraphTabV2({ ontologyId }: { ontologyId: string }) {
     setQueryResult([])
     try {
       if (queryMode === 'natural') {
-        const res: any = await apiClient.post(`/api/v2/ontologies/${ontologyId}/graph/ask`, { question: query })
+        const res: any = await apiClientV2.post(`/ontologies/${ontologyId}/graph/ask`, { question: query })
         setQueryResult(res.results || [])
       } else {
-        const res: any = await apiClient.post(`/api/v2/ontologies/${ontologyId}/graph/cypher`, { query })
+        const res: any = await apiClientV2.post(`/ontologies/${ontologyId}/graph/cypher`, { query })
         setQueryResult(res.results || [])
       }
     } catch (err: any) {

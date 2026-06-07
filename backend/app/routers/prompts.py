@@ -351,7 +351,7 @@ def generate_prompt_template(
         content = _call_llm(provider, api_key, api_base, model_name, [
             {"role": "system", "content": system_msg},
             {"role": "user", "content": user_msg},
-        ])
+        ], json_mode=False)
         if not isinstance(content, str):
             content = str(content)
     except Exception as e:

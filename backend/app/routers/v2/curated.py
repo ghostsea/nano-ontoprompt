@@ -148,7 +148,10 @@ def submit_review(
     """提交审核结果（approve/reject）"""
     ds = db.query(CuratedDataset).filter(CuratedDataset.id == dataset_id).first()
     if not ds:
-        raise HTTPException(404, "Curated dataset not found")
+        from app.models.v2.dataset import Dataset
+        ds_v2 = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.kind == "curated").first()
+        if not ds_v2:
+            raise HTTPException(404, "Curated dataset not found")
 
     from datetime import datetime, timezone
     review = CuratedReview(
@@ -158,7 +161,8 @@ def submit_review(
         decided_at=datetime.now(timezone.utc),
     )
     db.add(review)
-    ds.status = "approved" if action == "approve" else "rejected"
+    if ds:
+        ds.status = "approved" if action == "approve" else "rejected"
     db.commit()
     db.refresh(review)
 

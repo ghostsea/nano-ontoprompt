@@ -13,6 +13,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from app.database import SessionLocal
 from app.models.v2.connection import Connection
@@ -78,6 +79,22 @@ def get_connection(connection_id: str, db: Session = Depends(get_db)):
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found")
     return conn
+
+
+class TestConfigBody(BaseModel):
+    type: str
+    config: dict = {}
+
+
+@router.post("/test-config")
+def test_connection_config(body: TestConfigBody):
+    """测试连接配置（无需先创建 Connection，供 Builder 使用）"""
+    try:
+        connector = get_connector(body.type, body.config)
+        ok = connector.test_connection()
+        return {"success": ok}
+    except Exception as e:
+        return {"success": False, "detail": str(e)}
 
 
 @router.post("/{connection_id}/test")

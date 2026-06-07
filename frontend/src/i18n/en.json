@@ -1,6 +1,7 @@
 {
   "nav": {
     "overview": "Overview",
+    "pipelines": "Pipelines",
     "ontologies": "Ontologies",
     "prompts": "Prompts",
     "models": "Models",

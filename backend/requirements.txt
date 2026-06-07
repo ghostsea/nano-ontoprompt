@@ -23,3 +23,12 @@ PyYAML==6.0.2
 aiofiles==24.1.0
 python-dotenv==1.0.1
 json-repair>=0.30
+# v2 dependencies
+neo4j==5.26.0
+chromadb==0.5.20
+duckdb==1.2.0
+minio==7.2.12
+pymongo==4.10.1
+pyarrow==18.1.0
+pandas>=2.2
+python-crontab==3.2.0

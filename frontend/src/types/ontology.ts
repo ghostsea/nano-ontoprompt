@@ -6,6 +6,9 @@ export interface OntologyListItem {
   domain: string
   version: string
   status: OntologyStatus
+  build_mode?: string
+  entity_count: number
+  relation_count: number
   created_by: string
   created_at: string
   updated_at: string
@@ -13,6 +16,7 @@ export interface OntologyListItem {
 
 export interface OntologyDetail extends OntologyListItem {
   description?: string
+  build_mode?: string
   created_at: string
 }
 

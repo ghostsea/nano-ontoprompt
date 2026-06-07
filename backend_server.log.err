@@ -1,0 +1,12 @@
+D:\Anaconda\Lib\site-packages\pydantic\_internal\_fields.py:172: UserWarning: Field name "schema" in "NLQueryRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+INFO:     Started server process [40308]
+INFO:     Waiting for application startup.
+D:\Anaconda\Lib\site-packages\pandas\core\arrays\masked.py:61: UserWarning: Pandas requires version '1.3.6' or newer of 'bottleneck' (version '1.3.5' currently installed).
+  from pandas.core import (
+索引创建失败（可能已存在）: {code: Neo.ClientError.Statement.SyntaxError} {message: Invalid input ')': expected ":" (line 1, column 51 (offset: 50))
+"CREATE INDEX node_ontology_id IF NOT EXISTS FOR (n) ON (n.ontology_id)"
+                                                   ^}
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given

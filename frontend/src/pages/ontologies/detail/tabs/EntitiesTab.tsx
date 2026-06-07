@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ontologyApi } from '@/api/ontologies'
 import ConfidenceBar from '@/components/ConfidenceBar'
-import { Pencil, Trash2, Plus } from 'lucide-react'
+import { Pencil, Trash2, Plus, Search } from 'lucide-react'
 import type { Entity } from '@/types/ontology'
 
 export default function EntitiesTab({ ontologyId }: { ontologyId: string }) {
@@ -13,6 +13,8 @@ export default function EntitiesTab({ ontologyId }: { ontologyId: string }) {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [showCreate, setShowCreate] = useState(false)
+  const [searchQ, setSearchQ] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
   const { register, handleSubmit, reset } = useForm<Partial<Entity>>()
 
   const { data: entities = [], isLoading } = useQuery({
@@ -30,8 +32,37 @@ export default function EntitiesTab({ ontologyId }: { ontologyId: string }) {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['entities', ontologyId] }); qc.invalidateQueries({ queryKey: ['stats'] }) },
   })
 
+  const allTypes = useMemo(() => {
+    const s = new Set<string>()
+    ;(entities as Entity[]).forEach(e => { if (e.type) s.add(e.type) })
+    return Array.from(s).sort()
+  }, [entities])
+
+  const filtered = useMemo(() => {
+    const q = searchQ.trim().toLowerCase()
+    return (entities as Entity[]).filter(e => {
+      const matchQ = !q || e.name_cn?.toLowerCase().includes(q) || e.name_en?.toLowerCase().includes(q) || e.type?.toLowerCase().includes(q)
+      const matchType = !typeFilter || e.type === typeFilter
+      return matchQ && matchType
+    })
+  }, [entities, searchQ, typeFilter])
+
   return (
     <div className="space-y-4">
+      {/* Search bar */}
+      <div className="flex gap-2 items-center">
+        <div className="relative flex-1">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input value={searchQ} onChange={e => setSearchQ(e.target.value)}
+            placeholder="搜索名称 / 类型…"
+            className="w-full border rounded-lg pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black" />
+        </div>
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
+          className="border rounded-lg px-3 py-2 text-sm text-gray-600">
+          <option value="">全部类型</option>
+          {allTypes.map(tp => <option key={tp} value={tp}>{tp}</option>)}
+        </select>
+      </div>
       <div className="flex justify-end">
         <button onClick={() => { setShowCreate(true); reset() }}
           className="flex items-center gap-2 px-3 py-2 bg-black text-white rounded-lg text-sm">
@@ -48,7 +79,7 @@ export default function EntitiesTab({ ontologyId }: { ontologyId: string }) {
               ))}</tr>
             </thead>
             <tbody>
-              {(entities as Entity[]).map(e => (
+              {filtered.map(e => (
                 <tr key={e.id} className="border-b hover:bg-gray-50 cursor-pointer"
                   onClick={() => navigate(`/ontologies/${ontologyId}/entities/${e.id}`)}>
                   <td className="px-4 py-3 font-medium">{e.name_cn}</td>
@@ -65,8 +96,8 @@ export default function EntitiesTab({ ontologyId }: { ontologyId: string }) {
             </tbody>
           </table>
         )}
-        {!isLoading && (entities as Entity[]).length === 0 && (
-          <p className="text-center text-gray-400 py-8">{t('entities.empty')}</p>
+        {!isLoading && filtered.length === 0 && (
+          <p className="text-center text-gray-400 py-8">{searchQ || typeFilter ? '无匹配结果' : t('entities.empty')}</p>
         )}
       </div>
 

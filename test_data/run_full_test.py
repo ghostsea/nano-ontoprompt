@@ -162,7 +162,7 @@ def main(base_url: str) -> None:
                 resp = session.post(
                     f"{base_url}/api/v2/datasets/upload",
                     files={"file": (fname, f, "text/csv")},
-                    headers={k: v for k, v in session.headers.items() if k != "Content-Type"},
+                    headers={"Content-Type": None},
                 )
             if check_status(resp, 201, f"upload {fname}"):
                 body = get_json(resp)
@@ -382,7 +382,7 @@ def main(base_url: str) -> None:
                     f"{base_url}/api/v1/ontologies/{ontology_id}/files",
                     params={"ontology_id": ontology_id},
                     files={"file": (fname, f, mime)},
-                    headers={k: v for k, v in session.headers.items() if k != "Content-Type"},
+                    headers={"Content-Type": None},
                 )
             if check_status(resp2, 201, f"upload {fname} to ontology"):
                 file_body = get_json(resp2).get("data", {})
@@ -403,20 +403,33 @@ def main(base_url: str) -> None:
             model_name = (model_cfg.get("models") or [""])[0]
             file_ids = [uploaded_file_id] if uploaded_file_id else []
 
-            resp4 = session.post(
-                f"{base_url}/api/v1/ontologies/{ontology_id}/execute",
-                params={"ontology_id": ontology_id},
-                json={
-                    "model_id": model_id,
-                    "model_name": model_name,
-                    "file_ids": file_ids,
-                    "constraints": [],
-                },
-            )
-            if check_status(resp4, 200, f"POST execute ontology"):
-                body4 = get_json(resp4)
-                extraction_task_id = body4.get("data", {}).get("task_id")
-                ok(f"Extraction queued: task_id={extraction_task_id}")
+            # Fetch a prompt_id for the extraction request
+            resp_prompts = session.get(f"{base_url}/api/v1/prompts")
+            prompt_id = None
+            if resp_prompts.status_code == 200:
+                prompts_data = get_json(resp_prompts)
+                pts = prompts_data.get("data", prompts_data) if isinstance(prompts_data, dict) else prompts_data
+                if isinstance(pts, list) and pts:
+                    prompt_id = pts[0].get("id")
+            if not prompt_id:
+                warn("No prompts found — skipping extraction trigger")
+            else:
+                resp4 = session.post(
+                    f"{base_url}/api/v1/ontologies/{ontology_id}/execute",
+                    params={"ontology_id": ontology_id},
+                    json={
+                        "model_id": model_id,
+                        "model_name": model_name,
+                        "prompt_id": prompt_id,
+                        "file_ids": file_ids,
+                        "constraints": [],
+                    },
+                )
+                extraction_task_id = None
+                if check_status(resp4, 200, f"POST execute ontology"):
+                    body4 = get_json(resp4)
+                    extraction_task_id = body4.get("data", {}).get("task_id")
+                    ok(f"Extraction queued: task_id={extraction_task_id}")
 
                 # Poll extraction status for up to 60s
                 if extraction_task_id:
@@ -440,8 +453,6 @@ def main(base_url: str) -> None:
                             break
                     else:
                         warn("Extraction still running after 60s — continuing")
-            else:
-                warn(f"Extraction trigger returned {resp4.status_code} — may need valid model API key")
 
     # ─────────────────────────────────────────────────────────────────────────
     # STEP 8: Ontology Tabs — entities, logic, actions, graph, export

@@ -82,29 +82,27 @@ def infer_relations(entities: list, existing_relations: list, text: str,
         return []  # relation inference failure is non-fatal
 
 
-def _call_llm(provider: str, api_key: str, api_base: str | None, model: str, messages: list) -> str:
+def _call_llm(provider: str, api_key: str, api_base: str | None, model: str, messages: list, json_mode: bool = True) -> str:
     if provider == "anthropic":
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
         resp = client.messages.create(
             model=model, max_tokens=8192,
             system=messages[0]["content"],
-            messages=[{"role": "user", "content": messages[1]["content"] + "\n\n```json\n{"}],
+            messages=[{"role": "user", "content": messages[1]["content"] + ("\n\n```json\n{" if json_mode else "")}],
         )
-        return "{" + resp.content[0].text
+        return ("{" + resp.content[0].text) if json_mode else resp.content[0].text
     else:
         import openai
         kwargs = {"api_key": api_key}
         if api_base:
             kwargs["base_url"] = api_base
         client = openai.OpenAI(**kwargs)
-        resp = client.chat.completions.create(
-            model=model, messages=messages,
-            response_format={"type": "json_object"},
-            timeout=300,
-            max_tokens=16384,
-        )
-        return resp.choices[0].message.content
+        create_kwargs: dict = {"model": model, "messages": messages, "timeout": 300, "max_tokens": 16384}
+        if json_mode:
+            create_kwargs["response_format"] = {"type": "json_object"}
+        resp = client.chat.completions.create(**create_kwargs)
+        return resp.choices[0].message.content or ""
 
 
 def _parse_response(raw: str) -> dict:

@@ -1,6 +1,7 @@
 {
   "nav": {
     "overview": "概览",
+    "pipelines": "数据管道",
     "ontologies": "本体",
     "prompts": "提示词",
     "models": "模型",

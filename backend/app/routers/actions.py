@@ -42,3 +42,24 @@ def delete_action(ontology_id: str, action_id: str, db: Session = Depends(get_db
     if not a:
         raise HTTPException(404, "Not found")
     db.delete(a); db.commit()
+
+
+@router.post("/{action_id}/toggle")
+def toggle_action(ontology_id: str, action_id: str, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    a = db.query(Action).filter(Action.id == action_id, Action.ontology_id == ontology_id).first()
+    if not a:
+        raise HTTPException(404, "Not found")
+    a.enabled = not getattr(a, 'enabled', True)
+    db.commit()
+    return {"enabled": a.enabled}
+
+
+@router.post("/publish")
+def publish_actions(ontology_id: str, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    acts = db.query(Action).filter(
+        Action.ontology_id == ontology_id, Action.status != 'published'
+    ).all()
+    for a in acts:
+        a.status = 'published'
+    db.commit()
+    return {"published": len(acts)}
