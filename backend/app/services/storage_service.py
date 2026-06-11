@@ -1,6 +1,6 @@
 """
-MinIO 기반 오브젝트 스토리지 서비스.
-버킷: raw-datasets, curated-datasets, media, intermediate
+基于 MinIO 的对象存储服务。
+桶: raw-datasets, curated-datasets, media, intermediate
 """
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ class StorageService:
                 secret_key=secret_key or settings.minio_secret_key,
                 secure=secure if secure is not None else settings.minio_use_ssl,
             )
-            self._client.list_buckets()  # 연결 검증
+            self._client.list_buckets()  # 连接验证
             self._available = True
             logger.info("MinIO connected")
         except Exception as e:
@@ -69,13 +69,13 @@ class StorageService:
         return p
 
     def ensure_bucket(self, bucket: str) -> None:
-        """버킷이 없으면 생성합니다."""
+        """桶不存在则创建。"""
         self._require_available()
         if not self._client.bucket_exists(bucket):
             self._client.make_bucket(bucket)
 
     def ensure_default_buckets(self) -> None:
-        """4개 기본 버킷을 모두 초기화합니다."""
+        """初始化全部 4 个默认桶。"""
         for b in BUCKETS:
             self.ensure_bucket(b)
 
@@ -87,9 +87,9 @@ class StorageService:
         content_type: str = "application/octet-stream",
         length: int = -1,
     ) -> str:
-        """오브젝트를 업로드하고 URI(s3://bucket/key)를 반환합니다."""
+        """上传对象并返回 URI(s3://bucket/key)。"""
         self.ensure_bucket(bucket)
-        # minio-py는 length=-1 시 chunked read 사용
+        # minio-py 在 length=-1 时使用 chunked read
         self._client.put_object(
             bucket, key, data, length=length, content_type=content_type
         )
@@ -102,17 +102,17 @@ class StorageService:
         data: bytes,
         content_type: str = "application/octet-stream",
     ) -> str:
-        """bytes를 업로드합니다. MinIO 미연결 시 로컬 파일로 fallback."""
+        """上传 bytes。MinIO 未连接时回退本地文件。"""
         if self._available and self._client:
             return self.put_object(bucket, key, io.BytesIO(data), content_type, length=len(data))
-        # 로컬 fallback
+        # 本地回退
         local = self._local_path(bucket, key)
         with open(local, "wb") as f:
             f.write(data)
         return f"s3://{bucket}/{key}"
 
     def get_object(self, uri: str) -> bytes:
-        """s3://bucket/key URI로부터 오브젝트를 다운로드합니다. 로컬 fallback 포함."""
+        """按 s3://bucket/key URI 下载对象。含本地回退。"""
         bucket, key = self._parse_uri(uri)
         if self._available and self._client:
             resp = self._client.get_object(bucket, key)
@@ -121,7 +121,7 @@ class StorageService:
             finally:
                 resp.close()
                 resp.release_conn()
-        # 로컬 fallback
+        # 本地回退
         local = self._local_path(bucket, key)
         if os.path.exists(local):
             with open(local, "rb") as f:
@@ -129,12 +129,12 @@ class StorageService:
         raise FileNotFoundError(f"Object not found locally: {uri}")
 
     def get_stream(self, uri: str) -> BinaryIO:
-        """s3://bucket/key URI로부터 스트림을 반환합니다."""
+        """按 s3://bucket/key URI 返回流。"""
         bucket, key = self._parse_uri(uri)
         return self._client.get_object(bucket, key)
 
     def presigned_get(self, uri: str, expires_seconds: int = 3600) -> str:
-        """다운로드용 presigned URL을 생성합니다."""
+        """生成下载用 presigned URL。"""
         from datetime import timedelta
         bucket, key = self._parse_uri(uri)
         url = self._client.presigned_get_object(
@@ -143,23 +143,25 @@ class StorageService:
         return url
 
     def delete_object(self, uri: str) -> None:
-        """오브젝트를 삭제합니다."""
+        """删除对象。"""
         bucket, key = self._parse_uri(uri)
         self._client.remove_object(bucket, key)
 
     def list_prefix(self, bucket: str, prefix: str) -> list[str]:
-        """prefix 하위의 오브젝트 키 목록을 반환합니다."""
+        """返回 prefix 下的对象键列表。"""
         objects = self._client.list_objects(bucket, prefix=prefix, recursive=True)
         return [f"s3://{bucket}/{obj.object_name}" for obj in objects]
 
     def object_exists(self, uri: str) -> bool:
-        """오브젝트 존재 여부를 확인합니다."""
+        """检查对象是否存在。MinIO 不可用时回退本地文件系统。"""
         bucket, key = self._parse_uri(uri)
-        try:
-            self._client.stat_object(bucket, key)
-            return True
-        except S3Error:
-            return False
+        if self._available and self._client:
+            try:
+                self._client.stat_object(bucket, key)
+                return True
+            except S3Error:
+                return False
+        return os.path.exists(os.path.join(self._LOCAL_BASE, bucket, key))
 
     @staticmethod
     def _parse_uri(uri: str) -> tuple[str, str]:
@@ -173,7 +175,7 @@ class StorageService:
         return bucket, key
 
 
-# 싱글턴 인스턴스 (FastAPI 의존성 주입에서 사용)
+# 单例实例 (供 FastAPI 依赖注入使用)
 _storage_service: StorageService | None = None
 
 

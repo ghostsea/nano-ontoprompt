@@ -36,7 +36,11 @@ Thumbs.db
 
 # Logs
 *.log
+*.log.err
 celerybeat-schedule
+
+# Test artifacts
+test-results/
 
 # Internal / agent-only files
 AGENTS.md

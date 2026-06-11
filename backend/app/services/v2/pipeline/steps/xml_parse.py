@@ -1,4 +1,4 @@
-"""XML → 평면 테이블 변환 Step"""
+"""XML → 平面表转换 Step"""
 from __future__ import annotations
 import xml.etree.ElementTree as ET
 from typing import Any
@@ -8,16 +8,16 @@ from app.services.v2.pipeline.base import PipelineStep, PipelineContext
 
 class XmlParseStep(PipelineStep):
     """
-    XML 문자열 데이터를 평면 row 목록으로 변환합니다.
+    将 XML 字符串数据转换为平面 row 列表。
 
-    spec 옵션:
-      record_path: str — 반복 레코드 XPath (예: ".//record", ".//item")
-      fields: list[str] — 추출할 서브 요소/속성 목록 (빈 리스트면 전체)
-      include_attributes: bool (기본 True)
+    spec 选项:
+      record_path: str — 重复记录的 XPath (如: ".//record", ".//item")
+      fields: list[str] — 要提取的子元素/属性列表 (空列表则全部)
+      include_attributes: bool (默认 True)
     """
 
     def run(self, ctx: PipelineContext, data: list[dict]) -> list[dict]:
-        """data의 각 row에서 'xml_content' 키를 XML로 파싱."""
+        """将 data 中每个 row 的 'xml_content' 键解析为 XML。"""
         spec = ctx.spec.get("xml_parse", {})
         record_path = spec.get("record_path", ".//record")
         fields = spec.get("fields", [])
@@ -36,7 +36,7 @@ class XmlParseStep(PipelineStep):
                     merged.update(rec)
                     result.append(merged)
             except ET.ParseError:
-                result.append(row)  # 파싱 실패 시 원본 유지
+                result.append(row)  # 解析失败时保留原始数据
 
         ctx.meta["xml_parse"] = {"rows_before": len(data), "rows_after": len(result)}
         return result
@@ -46,7 +46,7 @@ class XmlParseStep(PipelineStep):
         records = root.findall(record_path)
 
         if not records:
-            # record_path에 해당 없으면 root 자체를 단일 레코드로 처리
+            # record_path 无匹配时将 root 本身作为单条记录处理
             records = [root]
 
         result = []

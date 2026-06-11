@@ -1,5 +1,5 @@
 """
-v2 Connection 관리 API
+v2 Connection 管理 API
 POST   /api/v2/connections
 GET    /api/v2/connections
 GET    /api/v2/connections/{id}
@@ -31,12 +31,12 @@ def get_db():
         db.close()
 
 
-# ── Pydantic 스키마 ────────────────────────────────────────────
+# ── Pydantic 模式 ─────────────────────────────────────────────
 
 class ConnectionCreate(BaseModel):
     name: str
     kind: str  # file | mysql | postgres | mongo | rest
-    config: dict  # 평문 연결 설정 (서버에서 암호화)
+    config: dict  # 明文连接配置 (服务端加密)
 
 
 class ConnectionResponse(BaseModel):
@@ -49,11 +49,11 @@ class ConnectionResponse(BaseModel):
         from_attributes = True
 
 
-# ── 엔드포인트 ─────────────────────────────────────────────────
+# ── 端点 ──────────────────────────────────────────────────────
 
 @router.post("", response_model=ConnectionResponse, status_code=201)
 def create_connection(body: ConnectionCreate, db: Session = Depends(get_db)):
-    """연결 생성. config는 암호화하여 저장."""
+    """创建连接。config 加密后存储。"""
     from app.services import encryption_service
     encrypted_config = {"_encrypted": encryption_service.encrypt(json.dumps(body.config))}
 
@@ -100,7 +100,7 @@ def test_connection_config(body: TestConfigBody):
 
 @router.post("/{connection_id}/test")
 def test_connection(connection_id: str, db: Session = Depends(get_db)):
-    """연결 테스트. 실제 연결을 시도하고 결과를 반환."""
+    """连接测试。尝试真实连接并返回结果。"""
     conn = db.query(Connection).filter(Connection.id == connection_id).first()
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -166,7 +166,8 @@ def trigger_sync(connection_id: str, db: Session = Depends(get_db)):
     try:
         from app.tasks.v2.sync_tasks import connection_sync_task
         connection_sync_task.delay(connection_id)
-    except Exception:
-        pass  # Celery may not be running in dev mode
+    except Exception as e:
+        return {"connection_id": connection_id, "status": "sync_failed",
+                "error": f"任务派发失败 (Celery/Redis 不可用?): {e}"}
 
     return {"connection_id": connection_id, "status": "sync_triggered"}

@@ -3,7 +3,7 @@
  */
 import { useState } from 'react'
 import { Save, CheckCircle, XCircle } from 'lucide-react'
-import { apiClient } from '@/api/client'
+import { apiClientV2 } from '@/api/client'
 
 interface RowEdit {
   row_pk: string
@@ -46,7 +46,7 @@ export default function CuratedReviewView({ datasetId, reviewId, data, onComplet
     if (pendingEdits.length === 0) return
     setSaving(true)
     try {
-      await apiClient.post(`/api/v2/curated/reviews/${reviewId}/edits`, { edits: pendingEdits })
+      await apiClientV2.post(`/curated/reviews/${reviewId}/edits`, { edits: pendingEdits })
       setPendingEdits([])
     } finally {
       setSaving(false)
@@ -55,7 +55,7 @@ export default function CuratedReviewView({ datasetId, reviewId, data, onComplet
 
   const handleDecision = async (action: 'approve' | 'reject') => {
     if (pendingEdits.length > 0) await saveEdits()
-    await apiClient.post(`/api/v2/curated/reviews/${reviewId}/${action}?notes=${encodeURIComponent(notes)}`)
+    await apiClientV2.post(`/curated/reviews/${reviewId}/${action}?notes=${encodeURIComponent(notes)}`)
     onComplete(action === 'approve' ? 'approved' : 'rejected')
   }
 

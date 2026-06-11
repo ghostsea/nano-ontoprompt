@@ -88,8 +88,8 @@ const lastTaskKey = (oid: string) => `ontoprompt_last_task_${oid}`
 function PipelineMappingInfo({ ontology }: { ontology: OntologyDetail }) {
   const [mappings, setMappings] = useState<any[]>([])
   useEffect(() => {
-    import('@/api/client').then(({ apiClient }) => {
-      apiClient.get(`/api/v2/ontologies/${ontology.id}/mappings`)
+    import('@/api/client').then(({ apiClientV2 }) => {
+      apiClientV2.get(`/ontologies/${ontology.id}/mappings`)
         .then((res: any) => setMappings(Array.isArray(res) ? res : []))
         .catch(() => setMappings([]))
     })

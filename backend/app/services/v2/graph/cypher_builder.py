@@ -1,4 +1,4 @@
-"""안전한 Cypher 쿼리 빌더 — SQL 인젝션 방어"""
+"""安全的 Cypher 查询构建器 — 防注入"""
 from __future__ import annotations
 import re
 
@@ -7,7 +7,7 @@ LABEL_PATTERN = re.compile(r'^[A-Za-z][A-Za-z0-9_]*$')
 
 
 def validate_label(label: str) -> str:
-    """Neo4j 레이블 이름 검증 (인젝션 방어)"""
+    """校验 Neo4j 标签名 (防注入)"""
     if not LABEL_PATTERN.match(label):
         raise ValueError(f"Invalid Neo4j label: {label!r}")
     return label
@@ -23,7 +23,7 @@ def build_match_by_id(label: str, node_id: str) -> tuple[str, dict]:
 
 def build_neighbors(label: str, node_id: str, depth: int = 1) -> tuple[str, dict]:
     label = validate_label(label)
-    depth = max(1, min(depth, 5))  # 최대 5단계
+    depth = max(1, min(depth, 5))  # 最多 5 层
     return (
         f"MATCH (n:{label} {{id: $id}})-[r*1..{depth}]-(m) RETURN n, r, m LIMIT 100",
         {"id": node_id},

@@ -1,4 +1,4 @@
-"""Pipeline 추상 기반"""
+"""Pipeline 抽象基类"""
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -19,7 +19,7 @@ class PipelineContext:
 class PipelineStep(ABC):
     @abstractmethod
     def run(self, ctx: PipelineContext, data: list[dict]) -> list[dict]:
-        """데이터를 변환하고 새 데이터를 반환"""
+        """转换数据并返回新数据"""
         ...
 
     @property

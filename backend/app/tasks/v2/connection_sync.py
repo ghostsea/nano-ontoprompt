@@ -1,16 +1,16 @@
 """
-Celery 태스크 — Connection 동기화 (Milestone 1.4 stub)
-실제 구현은 Milestone 1.5 이후에 추가됩니다.
+Celery 任务 — Connection 同步 (Milestone 1.4 stub)
+实际实现将在 Milestone 1.5 之后补充。
 """
 from __future__ import annotations
 
 
 def sync_connection(connection_id: str, mode: str = "full") -> dict:
     """
-    Connection 데이터를 동기화합니다.
+    同步 Connection 数据。
 
     Args:
-        connection_id: 동기화할 Connection ID
+        connection_id: 要同步的 Connection ID
         mode: "full" | "delta"
 
     Returns:
@@ -21,9 +21,9 @@ def sync_connection(connection_id: str, mode: str = "full") -> dict:
 
 def sync_all_connections() -> list[dict]:
     """
-    활성 상태인 모든 Connection을 순차적으로 동기화합니다.
+    顺序同步所有处于激活状态的 Connection。
 
     Returns:
-        각 Connection 동기화 결과 목록
+        各 Connection 的同步结果列表
     """
     pass

@@ -1,4 +1,4 @@
-"""Markdown → 구조화 JSON 추출 Step"""
+"""Markdown → 结构化 JSON 提取 Step"""
 from __future__ import annotations
 import json
 import re
@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_first_model(model_id: str | None = None):
-    """DB 에서 사용할 LLM 모델 설정 반환"""
+    """返回 DB 中可用的 LLM 模型配置"""
     try:
         from app.services.model_config_selector import select_llm_model_config
         return select_llm_model_config(
@@ -22,7 +22,7 @@ def _get_first_model(model_id: str | None = None):
 
 
 def _call_with_model(model_config, messages: list[dict]) -> str | None:
-    """사용자 설정 모델을 사용해 LLM 호출"""
+    """使用用户配置的模型调用 LLM"""
     if not model_config:
         return None
     try:
@@ -42,36 +42,36 @@ def _call_with_model(model_config, messages: list[dict]) -> str | None:
 
 class MarkdownToStructuredStep(PipelineStep):
     """
-    Markdown 텍스트에서 구조화 필드를 추출합니다.
+    从 Markdown 文本提取结构化字段。
 
-    spec 옵션:
-      target_schema: dict  — 추출할 필드 정의 {field_name: "description"}（없으면 자동 추론）
-      model_id: str        — 사용할 LLM 모델 ID
-      prompt_template: str — 커스텀 프롬프트
+    spec 选项:
+      target_schema: dict  — 提取字段定义 {field_name: "description"}（缺省则自动推断）
+      model_id: str        — 使用的 LLM 模型 ID
+      prompt_template: str — 自定义提示词
 
-    input:  row에 "markdown_text" 필드 포함
-    output: 구조화 필드 + extraction_method 필드 추가
+    input:  row 含 "markdown_text" 字段
+    output: 增加结构化字段 + extraction_method 字段
     """
 
-    EXTRACT_PROMPT = """다음 문서에서 아래 필드를 추출하세요. JSON으로만 반환하세요.
+    EXTRACT_PROMPT = """请从以下文档中提取下列字段。只返回 JSON。
 
-필드 목록:
+字段列表:
 {schema}
 
-문서:
+文档:
 {text}
 
-출력 형식 (JSON만, 설명 없이):
+输出格式 (仅 JSON, 不要解释):
 {{"field1": "value1", "field2": "value2"}}"""
 
-    AUTO_SCHEMA_PROMPT = """다음 문서를 분석하고, 이 문서 유형에 가장 유용한 구조화 레코드를 추출하세요.
-각 레코드는 문서 안의 한 행, 규칙, 섹션, 항목 또는 이벤트를 나타내야 합니다.
-필드 이름은 영문 snake_case로, 값은 문서에서 실제로 찾을 수 있는 것만 포함하세요.
+    AUTO_SCHEMA_PROMPT = """请分析以下文档, 提取对该文档类型最有用的结构化记录。
+每条记录应对应文档中的一行、一条规则、一个章节、一个条目或一个事件。
+字段名用英文 snake_case, 值只包含文档中实际存在的内容。
 
-문서:
+文档:
 {text}
 
-출력 형식 (JSON만, 설명 없이):
+输出格式 (仅 JSON, 不要解释):
 {{"records": [{{"record_id": "stable_id", "row_type": "table_row|rule|section|item", "field1": "extracted_value1"}}]}}"""
 
     def run(self, ctx: PipelineContext, data: list[dict]) -> list[dict]:
@@ -81,7 +81,7 @@ class MarkdownToStructuredStep(PipelineStep):
 
         model_config = _get_first_model(model_id)
 
-        # target_schema 없으면 자동 추론 또는 규칙 기반 추출
+        # 无 target_schema 时自动推断或规则提取
         if not target_schema:
             if not spec.get("auto_extract") and not spec.get("rule_based"):
                 ctx.meta["md_to_structured"] = {
@@ -90,17 +90,17 @@ class MarkdownToStructuredStep(PipelineStep):
                 return data
             sample_md = next((r.get("markdown_text", "") for r in data if r.get("markdown_text")), "")
             if sample_md and model_config and spec.get("auto_extract"):
-                # LLM으로 자동 추출 시도
+                # 尝试 LLM 自动提取
                 result = self._auto_extract_with_llm(data, model_config)
                 if result:
                     ctx.meta["md_to_structured"] = {
                         "method": "llm_auto", "processed": len(data), "success": len(result)
                     }
                     return result
-            # 규칙 기반 폴백
+            # 规则回退
             return self._rule_based_extract(data, ctx)
 
-        # target_schema 있으면 LLM 필드 추출
+        # 有 target_schema 时 LLM 按字段提取
         result, success = [], 0
         for row in data:
             md_text = row.get("markdown_text", "")
@@ -129,10 +129,10 @@ class MarkdownToStructuredStep(PipelineStep):
         }
         return result
 
-    # ── LLM 자동 추출（target_schema 없을 때）───────────────────────────────
+    # ── LLM 自动提取（无 target_schema 时）─────────────────────────────────
 
     def _auto_extract_with_llm(self, data: list[dict], model_config) -> list[dict] | None:
-        """LLM에게 schema 추론 + 추출을 한 번에 요청"""
+        """一次性请求 LLM 完成 schema 推断 + 提取"""
         result = []
         for row in data:
             md = row.get("markdown_text", "")
@@ -144,7 +144,7 @@ class MarkdownToStructuredStep(PipelineStep):
                 {"role": "user", "content": self.AUTO_SCHEMA_PROMPT.format(text=md[:4000])},
             ])
             if resp is None:
-                return None  # LLM 실패 → 규칙 기반으로 폴백
+                return None  # LLM 失败 → 回退规则提取
             try:
                 text = resp.strip()
                 if "```" in text:
@@ -170,13 +170,13 @@ class MarkdownToStructuredStep(PipelineStep):
             result.append(row)
         return result
 
-    # ── LLM 필드 추출（target_schema 있을 때）───────────────────────────────
+    # ── LLM 字段提取（有 target_schema 时）─────────────────────────────────
 
     def _extract(self, md_text: str, schema: dict, model_config) -> dict:
         return self._extract_fields(md_text, schema, model_config)
 
     def _extract_fields(self, md_text: str, schema: dict, model_config) -> dict:
-        """LLM으로 target_schema에 따라 필드 추출"""
+        """LLM 按 target_schema 提取字段"""
         schema_str = "\n".join(f"- {k}: {v}" for k, v in schema.items())
         resp = _call_with_model(model_config, [
             {"role": "system", "content": "You are a structured data extraction assistant. Return valid JSON only."},
@@ -193,10 +193,10 @@ class MarkdownToStructuredStep(PipelineStep):
         except Exception:
             return {k: "" for k in schema}
 
-    # ── 규칙 기반 폴백 ──────────────────────────────────────────────────────
+    # ── 规则回退 ────────────────────────────────────────────────────────────
 
     def _rule_based_extract(self, data: list[dict], ctx: PipelineContext) -> list[dict]:
-        """LLM 없을 때 정규식으로 구조화 정보 추출 (PRD: 규칙/엔터티/수치 탐지)"""
+        """无 LLM 时用正则提取结构化信息 (PRD: 规则/实体/数值检测)"""
         result = []
         for row in data:
             md = row.get("markdown_text", "")
@@ -218,7 +218,7 @@ class MarkdownToStructuredStep(PipelineStep):
             }
             start_index = len(result)
 
-            # ① IF-THEN 규칙 추출
+            # ① IF-THEN 规则提取
             rules = re.findall(
                 r'IF\s+(.+?)\s+THEN\s+(.+?)(?=\n|$)',
                 md, re.IGNORECASE | re.MULTILINE
@@ -236,7 +236,7 @@ class MarkdownToStructuredStep(PipelineStep):
                 })
                 result.append(out)
 
-            # ② Markdown 표格拆成结构化行
+            # ② Markdown 表格拆成结构化行
             table_rows = self._extract_table_records(md, str(source_file))
             for item in table_rows:
                 out = dict(base)
@@ -252,7 +252,7 @@ class MarkdownToStructuredStep(PipelineStep):
                 out.update(item)
                 result.append(out)
 
-            # ④ 중국어 기업/조직명 추출
+            # ④ 中文企业/组织名提取
             org_names = re.findall(
                 r'[一-龥]{2,10}(?:公司|集团|科技|物流|铝业|五金|包装|原材料)',
                 md

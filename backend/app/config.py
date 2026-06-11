@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
+    environment: str = "development"  # development | production
     database_url: str = "sqlite:///./ontoprompt.db"
     redis_url: str = "redis://localhost:6379/0"
     secret_key: str = "dev-secret-key"
@@ -28,3 +29,19 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env"}
 
 settings = Settings()
+
+# 生产环境禁止使用默认凭据 — 启动即失败, 避免带默认密钥上线
+if settings.environment == "production":
+    _insecure = []
+    if settings.secret_key == "dev-secret-key":
+        _insecure.append("SECRET_KEY")
+    if settings.first_admin_password == "changeme123":
+        _insecure.append("FIRST_ADMIN_PASSWORD")
+    if settings.minio_access_key == "minioadmin" or settings.minio_secret_key == "minioadmin":
+        _insecure.append("MINIO_ACCESS_KEY/MINIO_SECRET_KEY")
+    if not settings.encryption_key:
+        _insecure.append("ENCRYPTION_KEY")
+    if _insecure:
+        raise RuntimeError(
+            f"ENVIRONMENT=production 但以下配置仍为默认值, 必须通过环境变量注入: {', '.join(_insecure)}"
+        )

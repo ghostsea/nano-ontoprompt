@@ -328,12 +328,29 @@ def run_pipeline(pipeline_id: str, db: Session = Depends(get_db)):
     db.refresh(run)
 
     try:
+        _ensure_broker_reachable()
         from app.tasks.v2.pipeline_run import pipeline_run_task
         pipeline_run_task.delay(pipeline_id, run.id)
-    except Exception:
-        pass
+    except Exception as e:
+        # Celery/Redis 不可用时立即标记失败，避免 run 永远停在 pending
+        run.status = "failed"
+        run.error_log = f"任务派发失败 (Celery/Redis 不可用?): {e}"
+        run.finished_at = datetime.now(timezone.utc)
+        pl.status = "failed"
+        db.commit()
+        return {"run_id": run.id, "status": "failed", "error": run.error_log}
 
     return {"run_id": run.id, "status": "pending"}
+
+
+def _ensure_broker_reachable(timeout: float = 2.0):
+    """快速预检 Celery broker 可达性 — kombu 自身的连接重试会阻塞请求数十秒"""
+    import socket
+    from urllib.parse import urlparse
+    from app.config import settings
+    u = urlparse(settings.redis_url)
+    sock = socket.create_connection((u.hostname or "localhost", u.port or 6379), timeout=timeout)
+    sock.close()
 
 
 @router.get("/{pipeline_id}/runs")
@@ -384,7 +401,7 @@ def run_pipeline_sync(pipeline_id: str, db: Session = Depends(get_db)):
         db.refresh(run)
         pl.status = "published" if run.status == "success" else "failed"
         db.commit()
-        return {"run_id": run.id, "status": run.status, "stats": run.stats}
+        return {"run_id": run.id, "status": run.status, "stats": run.stats, "error": run.error_log}
     except Exception as e:
         pl.status = "failed"
         db.commit()

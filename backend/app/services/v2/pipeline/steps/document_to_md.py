@@ -1,4 +1,4 @@
-"""문서 → Markdown 변환 Step (전략 패턴)"""
+"""文档 → Markdown 转换 Step (策略模式)"""
 from __future__ import annotations
 import base64
 import logging
@@ -11,14 +11,14 @@ logger = logging.getLogger(__name__)
 
 class DocumentToMarkdownStep(PipelineStep):
     """
-    문서를 Markdown 텍스트로 변환합니다.
+    将文档转换为 Markdown 文本。
 
-    spec 옵션:
-      strategy: "markitdown" | "ocr" | "vlm" (기본: "markitdown")
-      model_id: str — VLM 전략에서 사용할 모델 ID (vlm 전략 필수)
+    spec 选项:
+      strategy: "markitdown" | "ocr" | "vlm" (默认: "markitdown")
+      model_id: str — VLM 策略使用的模型 ID (vlm 策略必填)
 
-    input: data의 각 row는 {"storage_uri": "s3://...", "filename": "..."}
-    output: 각 row에 "markdown_text" 필드 추가
+    input: data 的每个 row 形如 {"storage_uri": "s3://...", "filename": "..."}
+    output: 每个 row 增加 "markdown_text" 字段
     """
 
     def run(self, ctx: PipelineContext, data: list[dict]) -> list[dict]:
@@ -68,7 +68,7 @@ class DocumentToMarkdownStep(PipelineStep):
 
     def _convert(self, row: dict, strategy: str, spec: dict, ctx: PipelineContext) -> str:
         filename = row.get("filename", "")
-        content = row.get("content", b"")  # bytes 또는 문자열
+        content = row.get("content", b"")  # bytes 或字符串
 
         if strategy == "markitdown":
             return self._convert_markitdown(content, filename)
@@ -80,7 +80,7 @@ class DocumentToMarkdownStep(PipelineStep):
             raise ValueError(f"Unknown strategy: {strategy}")
 
     def _convert_markitdown(self, content: bytes | str, filename: str) -> str:
-        """MarkItDown으로 문서를 Markdown으로 변환"""
+        """用 MarkItDown 将文档转换为 Markdown"""
         try:
             from markitdown import MarkItDown
             import tempfile
@@ -88,7 +88,7 @@ class DocumentToMarkdownStep(PipelineStep):
             md_converter = MarkItDown()
 
             if isinstance(content, bytes):
-                # 임시 파일 생성
+                # 创建临时文件
                 suffix = Path(filename).suffix or ".bin"
                 with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                     tmp.write(content)
@@ -102,7 +102,7 @@ class DocumentToMarkdownStep(PipelineStep):
                 return str(content)
         except BaseException as e:
             logger.warning(f"MarkItDown conversion failed for {filename}: {e}")
-            # MarkItDown 실패 시 텍스트 디코딩으로 폴백
+            # MarkItDown 失败时回退为文本解码
             if isinstance(content, bytes):
                 return content.decode("utf-8", errors="replace")
             return str(content)

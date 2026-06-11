@@ -1,4 +1,4 @@
-"""Dataset CRUD + 버전 관리 서비스 (DuckDB 미리보기 포함)"""
+"""Dataset CRUD + 版本管理服务 (含 DuckDB 预览)"""
 from __future__ import annotations
 import hashlib
 import json
@@ -22,18 +22,18 @@ class DatasetService:
         return ds
 
     def create_version(self, dataset_id: str, data: bytes, rowcount: int | None = None) -> DatasetVersion:
-        """데이터를 MinIO에 저장하고 DatasetVersion 생성"""
+        """将数据存入 MinIO 并创建 DatasetVersion"""
         ds = self._db.query(Dataset).filter(Dataset.id == dataset_id).first()
         if not ds:
             raise ValueError(f"Dataset {dataset_id} not found")
 
-        # 버전 번호 결정
+        # 确定版本号
         last_ver = self._db.query(DatasetVersion).filter(
             DatasetVersion.dataset_id == dataset_id
         ).order_by(DatasetVersion.version_no.desc()).first()
         version_no = (last_ver.version_no + 1) if last_ver else 1
 
-        # MinIO 저장
+        # 存入 MinIO
         checksum = hashlib.sha256(data[:1024]).hexdigest()[:16]
         key = f"datasets/{dataset_id}/v{version_no}/data.bin"
         uri = self._storage.put_bytes("raw-datasets", key, data)
@@ -66,7 +66,7 @@ class DatasetService:
         ).order_by(DatasetVersion.version_no).all()
 
     def preview(self, dataset_id: str, version_no: int, limit: int = 100) -> list[dict]:
-        """CSV/JSON データ 미리보기. DuckDB 없이 순수 Python 처리."""
+        """CSV/JSON 数据预览。无需 DuckDB, 纯 Python 处理。"""
         ver = self._db.query(DatasetVersion).filter(
             DatasetVersion.dataset_id == dataset_id,
             DatasetVersion.version_no == version_no,

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Search } from 'lucide-react'
-import { apiClient } from '@/api/client'
+import { apiClientV2 } from '@/api/client'
 
 type SearchMode = 'keyword' | 'semantic'
 
@@ -23,9 +23,9 @@ export default function OntologySearchBox({ ontologyId }: { ontologyId: string }
     setLoading(true)
     try {
       const endpoint = mode === 'semantic'
-        ? `/api/v2/ontologies/${ontologyId}/search/semantic?q=${encodeURIComponent(query)}`
-        : `/api/v2/ontologies/${ontologyId}/search/keyword?q=${encodeURIComponent(query)}`
-      const res: any = await apiClient.get(endpoint)
+        ? `/ontologies/${ontologyId}/search/semantic?q=${encodeURIComponent(query)}`
+        : `/ontologies/${ontologyId}/search/keyword?q=${encodeURIComponent(query)}`
+      const res: any = await apiClientV2.get(endpoint)
       setResults(res.results || [])
       setSearched(true)
     } catch {

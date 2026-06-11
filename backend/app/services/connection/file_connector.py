@@ -1,4 +1,4 @@
-"""파일 업로드 Connector — MinIO 기반"""
+"""文件上传 Connector — 基于 MinIO"""
 from __future__ import annotations
 
 import mimetypes
@@ -10,8 +10,8 @@ from app.services.storage_service import StorageService, get_storage_service
 
 class FileConnector(ConnectorBase):
     """
-    로컬 파일 업로드를 Connection으로 취급하는 Connector.
-    config 예시: {"bucket": "raw-datasets", "prefix": "uploads/conn-id/"}
+    将本地文件上传作为 Connection 处理的 Connector。
+    config 示例: {"bucket": "raw-datasets", "prefix": "uploads/conn-id/"}
     """
 
     BUCKET = "raw-datasets"
@@ -29,19 +29,19 @@ class FileConnector(ConnectorBase):
             return False
 
     def list_resources(self) -> list[str]:
-        """MinIO prefix 하위 파일 URI 목록"""
+        """MinIO prefix 下的文件 URI 列表"""
         return self._storage.list_prefix(self.BUCKET, self._prefix)
 
     def pull_sample(self, resource: str, limit: int = 100) -> list[dict]:
-        """파일 메타정보를 반환 (실제 파싱은 Transform 단계에서)"""
+        """返回文件元信息 (实际解析在 Transform 阶段)"""
         return [{"uri": resource, "type": "file"}]
 
     def pull_full(self, resource: str) -> bytes:
-        """파일 내용을 bytes로 반환"""
+        """以 bytes 返回文件内容"""
         return self._storage.get_object(resource)
 
     def upload_file(self, filename: str, data: bytes, content_type: str = "") -> str:
-        """파일을 MinIO에 업로드하고 URI를 반환"""
+        """上传文件到 MinIO 并返回 URI"""
         if not content_type:
             content_type, _ = mimetypes.guess_type(filename)
             content_type = content_type or "application/octet-stream"

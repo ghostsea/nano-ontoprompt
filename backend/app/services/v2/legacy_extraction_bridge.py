@@ -1,4 +1,4 @@
-"""v1 LLM 추출 결과를 Neo4j + ChromaDB에 동시 기록하는 브릿지"""
+"""将 v1 LLM 提取结果同时写入 Neo4j + ChromaDB 的桥接器"""
 from __future__ import annotations
 import logging
 
@@ -31,7 +31,7 @@ class LegacyExtractionBridge:
             logger.info(f"[bridge] Neo4j unavailable — skip sync for ontology {ontology_id}")
             return
 
-        # 엔티티 MERGE
+        # 实体 MERGE
         for entity in entities:
             label = entity.get("type", "Entity")
             props = {
@@ -47,7 +47,7 @@ class LegacyExtractionBridge:
             except Exception as e:
                 logger.warning(f"Neo4j entity upsert failed: {e}")
 
-        # 관계 MERGE
+        # 关系 MERGE
         for rel in relations:
             try:
                 self._neo4j.upsert_relation(
@@ -64,7 +64,7 @@ class LegacyExtractionBridge:
         logger.info(f"[bridge] Neo4j sync: ontology={ontology_id}, {len(entities)} entities, {len(relations)} relations")
 
     def sync_to_chroma(self, ontology_id: str, entities: list[dict]) -> None:
-        """ChromaDB에 임베딩 저장"""
+        """向 ChromaDB 存储嵌入"""
         if not self._chroma or not self._chroma.available:
             logger.info(f"[bridge] ChromaDB unavailable — skip sync for ontology {ontology_id}")
             return

@@ -1,9 +1,9 @@
-"""데이터 정제 Step — NULL 처리, 중복 제거, 날짜 정규화, jagged row 필터링"""
+"""数据清洗 Step — NULL 处理、去重、日期规范化、jagged row 过滤"""
 from __future__ import annotations
 import re
 from app.services.v2.pipeline.base import PipelineStep, PipelineContext
 
-# ISO 8601 으로 정규화할 날짜 패턴들
+# 待规范化为 ISO 8601 的日期模式
 _DATE_PATTERNS = [
     (re.compile(r'^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$'), '{}-{:02d}-{:02d}'),
     (re.compile(r'^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$'), '{2}-{0:02d}-{1:02d}'),
@@ -12,7 +12,7 @@ _DATE_PATTERNS = [
 
 
 def _normalize_date(val: str) -> str:
-    """날짜 문자열을 YYYY-MM-DD 형식으로 표준화"""
+    """将日期字符串标准化为 YYYY-MM-DD 格式"""
     val = val.strip()
     for pat, fmt in _DATE_PATTERNS:
         m = pat.match(val)
@@ -24,18 +24,18 @@ def _normalize_date(val: str) -> str:
                 return fmt.format(*parts)
             except (ValueError, IndexError):
                 pass
-    return val  # 매칭 안되면 그대로
+    return val  # 不匹配则原样返回
 
 
 class CleansingStep(PipelineStep):
     """
-    spec 옵션:
-      null_strategy:   "drop" | "fill_empty" | "mark" (기본: "fill_empty")
-                       mark = 원래 값을 빈 문자열로 채우고 __null_<col>__ = "1" 마커 열 추가
-      deduplicate:     bool (기본: True)
-      trim_strings:    bool (기본: True)
-      normalize_dates: bool (기본: True) — timestamp 열 날짜 형식 표준화
-      filter_jagged:   bool (기본: True) — 열 수 불일치 행 제거
+    spec 选项:
+      null_strategy:   "drop" | "fill_empty" | "mark" (默认: "fill_empty")
+                       mark = 原值填充为空字符串, 并增加 __null_<col>__ = "1" 标记列
+      deduplicate:     bool (默认: True)
+      trim_strings:    bool (默认: True)
+      normalize_dates: bool (默认: True) — timestamp 列日期格式标准化
+      filter_jagged:   bool (默认: True) — 删除列数不一致的行
     """
 
     def run(self, ctx: PipelineContext, data: list[dict]) -> list[dict]:
@@ -49,10 +49,10 @@ class CleansingStep(PipelineStep):
         normalize_dates = spec.get("normalize_dates", True)
         filter_jagged   = spec.get("filter_jagged",   True)
 
-        # 기준 열 집합 (첫 행 기준)
+        # 基准列集合 (以首行为准)
         expected_cols = set(data[0].keys())
 
-        # timestamp 열 감지 (schema_inference 결과 참조)
+        # 检测 timestamp 列 (参考 schema_inference 结果)
         inferred_schema: dict[str, str] = ctx.meta.get("inferred_schema", {})
         timestamp_cols = {col for col, t in inferred_schema.items() if t == "timestamp"}
 
@@ -63,14 +63,14 @@ class CleansingStep(PipelineStep):
         date_normalized = 0
 
         for row in data:
-            # ① jagged row 필터링 (열 수 불일치)
+            # ① jagged row 过滤 (列数不一致)
             if filter_jagged and set(row.keys()) != expected_cols:
                 jagged_count += 1
                 continue
 
-            # ② NULL 처리
+            # ② NULL 处理
             cleaned: dict = {}
-            null_markers: dict = {}   # mark 전략용
+            null_markers: dict = {}   # mark 策略使用
             skip = False
             for k, v in row.items():
                 is_null = v is None or (isinstance(v, str) and v.strip() == "")
@@ -92,10 +92,10 @@ class CleansingStep(PipelineStep):
             if skip:
                 continue
 
-            # mark 전략: 마커 열 추가
+            # mark 策略: 增加标记列
             cleaned.update(null_markers)
 
-            # ③ 날짜 형식 표준화
+            # ③ 日期格式标准化
             if normalize_dates and timestamp_cols:
                 for col in timestamp_cols:
                     if col in cleaned and cleaned[col]:
@@ -104,7 +104,7 @@ class CleansingStep(PipelineStep):
                             cleaned[col] = normalized
                             date_normalized += 1
 
-            # ④ 중복 제거
+            # ④ 去重
             if deduplicate:
                 key = str(sorted(cleaned.items()))
                 if key in seen:

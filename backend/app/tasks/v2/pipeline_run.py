@@ -313,13 +313,15 @@ def _save_curated_dataset(db, svc, pl, source: dict, data: list[dict], ctx, mult
 
     if data:
         try:
-            curated_ds.schema_json = curated_ds.schema_json or {}
-            curated_ds.schema_json["quality_score"] = _compute_quality_score(data, source["route"], ctx.meta)
-            curated_ds.schema_json["columns"] = [k for k in data[0].keys() if k != "content"]
-            curated_ds.schema_json["route"] = source["route"]
-            curated_ds.schema_json["source_dataset_id"] = source["dataset_id"]
+            # 赋新 dict, 原地修改 JSON 列不会被 SQLAlchemy 跟踪
+            schema = dict(curated_ds.schema_json or {})
+            schema["quality_score"] = _compute_quality_score(data, source["route"], ctx.meta)
+            schema["columns"] = [k for k in data[0].keys() if k != "content"]
+            schema["route"] = source["route"]
+            schema["source_dataset_id"] = source["dataset_id"]
             if table_name:
-                curated_ds.schema_json["transform_output_table"] = table_name
+                schema["transform_output_table"] = table_name
+            curated_ds.schema_json = schema
             db.commit()
         except Exception:
             pass
@@ -380,9 +382,8 @@ def pipeline_run_task(pipeline_id: str, run_id: str):
         def set_node_status(nid: str, status: str):
             if nid in node_status:
                 node_status[nid] = status
-                # 每步更新持久化到 run 的临时字段
-                run.stats = run.stats or {}
-                run.stats["node_status"] = dict(node_status)
+                # 每步更新持久化到 run; 必须赋新 dict, 原地修改 JSON 列不会被 SQLAlchemy 跟踪
+                run.stats = {**(run.stats or {}), "node_status": dict(node_status)}
                 db.commit()
 
         svc = DatasetService(db)
@@ -447,10 +448,9 @@ def pipeline_run_task(pipeline_id: str, run_id: str):
             run.status = "failed"
             run.error_log = str(e)
             run.finished_at = datetime.now(timezone.utc)
-            if run.stats is None:
-                run.stats = {}
-            if "node_status" not in run.stats:
-                run.stats["node_status"] = {}
+            stats = dict(run.stats or {})
+            stats.setdefault("node_status", {})
+            run.stats = stats
             db.commit()
     finally:
         db.close()

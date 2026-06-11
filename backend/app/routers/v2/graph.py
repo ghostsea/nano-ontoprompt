@@ -1,4 +1,4 @@
-"""v2 Graph API — Neo4j 기반"""
+"""v2 Graph API — 基于 Neo4j"""
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -28,7 +28,7 @@ class CypherRequest(BaseModel):
 
 @router.get("/{ontology_id}/graph")
 def get_graph(ontology_id: str, limit: int = 200, label_filter: str | None = None):
-    """온톨로지 그래프 데이터 반환 (Neovis.js 호환 포맷)"""
+    """返回本体图谱数据 (Neovis.js 兼容格式)"""
     svc = get_neo4j()
     if not svc.available:
         return _sqlite_graph_data(ontology_id, limit=limit, label_filter=label_filter)
@@ -159,8 +159,8 @@ def integration_status(ontology_id: str):
 
 @router.post("/{ontology_id}/graph/cypher")
 def run_cypher(ontology_id: str, body: CypherRequest):
-    """Cypher 쿼리 실행 (검증 후)"""
-    # 기본 안전성 검사 — WRITE 쿼리 차단
+    """执行 Cypher 查询 (先校验)"""
+    # 基础安全检查 — 拦截写查询
     query_upper = body.query.upper().strip()
     write_keywords = ("CREATE", "MERGE", "DELETE", "DETACH", "SET", "REMOVE", "DROP")
     for kw in write_keywords:
@@ -177,7 +177,7 @@ def run_cypher(ontology_id: str, body: CypherRequest):
 
 @router.get("/{ontology_id}/graph/neighbors/{node_id}")
 def get_neighbors(ontology_id: str, node_id: str, depth: int = 1):
-    """노드 이웃 조회"""
+    """查询节点邻居"""
     svc = get_neo4j()
     if not svc.available:
         return {"nodes": [], "edges": [], "neo4j_available": False}

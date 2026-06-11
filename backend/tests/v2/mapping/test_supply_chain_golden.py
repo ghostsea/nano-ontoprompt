@@ -117,7 +117,7 @@ def test_supply_chain_mapping_golden_prd_242_semantics(db, admin_user):
     assert set(pk_by_entity) <= entity_types
 
     rels = db.query(Relation).filter(Relation.ontology_id == ontology.id).all()
-    assert any(r.type == "HAS_SUP" and (r.properties or {}).get("source") == "fk_inference" for r in rels)
+    assert any(r.type == "HAS_SUPPLIER_DATABASE" and (r.properties or {}).get("source") == "fk_inference" for r in rels)
     assert db.query(OntologyLinkMapping).filter(
         OntologyLinkMapping.ontology_id == ontology.id,
         OntologyLinkMapping.status == "inferred",

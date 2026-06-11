@@ -155,6 +155,13 @@ class MappingService:
         results = []
         m_list = [m for m in mappings if m.id in mapping_meta]
 
+        # 重建前清除旧的 FK 推断关系，避免改名/数据变化后产生重复边
+        stale = self._db.query(Relation).filter(Relation.ontology_id == ontology_id).all()
+        for rel in stale:
+            if (rel.properties or {}).get("source") == "fk_inference":
+                self._db.delete(rel)
+        self._db.commit()
+
         for i, src_m in enumerate(m_list):
             src_meta = mapping_meta[src_m.id]
             src_cols = src_meta["columns"]
@@ -167,9 +174,19 @@ class MappingService:
                 tgt_pk_col = tgt_meta["pk_col"]
                 tgt_id_map = tgt_meta["entity_id_map"]
 
+                tgt_pk_values = {
+                    str(row.get(tgt_pk_col, "")).strip()
+                    for row in tgt_meta.get("rows", [])
+                    if row.get(tgt_pk_col) not in (None, "")
+                }
+                # 归一化索引: 容错 ID 格式差异 (如 SUP-001 vs SUP001)
+                tgt_norm_index = {
+                    self._normalize_fk_value(v): v for v in tgt_pk_values
+                }
                 fk_candidates = self._detect_fk_columns(
                     src_cols, tgt_class, tgt_m.entity_class,
-                    src_sample_rows=src_meta.get("rows", [])
+                    src_sample_rows=src_meta.get("rows", []),
+                    tgt_pk_values=tgt_pk_values,
                 )
                 if not fk_candidates:
                     continue
@@ -186,6 +203,11 @@ class MappingService:
                         src_pk_val = self._row_identity_value(row, src_pk_col)
                         src_eid = src_meta["entity_id_map"].get(src_pk_val)
                         tgt_eid = tgt_id_map.get(self._lookup_identity_value(tgt_pk_col, fk_val))
+                        if not tgt_eid:
+                            # 归一化匹配: 容错 SUP-001 vs SUP001 等格式差异
+                            raw = tgt_norm_index.get(self._normalize_fk_value(fk_val))
+                            if raw is not None:
+                                tgt_eid = tgt_id_map.get(self._lookup_identity_value(tgt_pk_col, raw))
                         if not src_eid or not tgt_eid:
                             continue
                         src_exists = self._db.query(Entity).filter(Entity.id == src_eid).first()
@@ -379,6 +401,12 @@ class MappingService:
             sort_keys=True,
             default=str,
         )
+
+    @staticmethod
+    def _normalize_fk_value(value: str) -> str:
+        """FK 值归一化: 大写并去掉分隔符，容错 SUP-001 / sup_001 / SUP001 等格式差异"""
+        import re
+        return re.sub(r'[\s\-_]', '', str(value)).upper()
 
     def _row_identity_value(self, row: dict, pk_col: str | None) -> str:
         if pk_col and pk_col != "__row_hash__" and row.get(pk_col) not in (None, ""):
@@ -993,8 +1021,9 @@ class MappingService:
     def _detect_fk_columns(
         self, src_cols: list[str], tgt_entity_class: str, tgt_dataset_name: str,
         src_sample_rows: list[dict] | None = None,
+        tgt_pk_values: set[str] | None = None,
     ) -> list[tuple[str, str]]:
-        """多级 FK 检测: 1)标准_id 2)语义词 3)值模式 4)LLM"""
+        """多级 FK 检测: 1)标准_id/.id 2)语义词 3)值重叠 4)值模式 5)LLM"""
         candidates = []
         import re
         tgt_lower = tgt_entity_class.lower()
@@ -1004,11 +1033,12 @@ class MappingService:
 
         for col in src_cols:
             col_lower = col.lower().rstrip("s")
-            col_clean = re.sub(r'[\s\-]', '_', col_lower)
+            # 点号(JSON flatten 产物)与空格/连字符统一归一化为下划线
+            col_clean = re.sub(r'[\s\-\.]', '_', col_lower)
 
-            is_standard_fk = col_lower.endswith("_id") or col.endswith("Id") or col.endswith("ID")
+            is_standard_fk = col_clean.endswith("_id") or col.endswith("Id") or col.endswith("ID")
             if is_standard_fk:
-                col_prefix = re.sub(r'[_]?id$', '', col_lower)
+                col_prefix = re.sub(r'[_]?id$', '', col_clean)
                 if (col_prefix in tgt_lower or tgt_lower in col_prefix or
                     any(part in col_prefix for part in tgt_parts if len(part) > 2)):
                     rel_name = col_prefix.upper().replace("-", "_") or tgt_lower.upper()
@@ -1024,6 +1054,18 @@ class MappingService:
                 rel_type = f"HAS_{rel_name}" if not rel_name.startswith("HAS_") else rel_name
                 candidates.append((col, rel_type))
                 continue
+
+            # 值重叠检测: 列值与目标主键值高度重合即判定 FK(对中文列名等无法靠列名匹配的情况有效)
+            if tgt_pk_values and src_sample_rows:
+                tgt_norm = {self._normalize_fk_value(v) for v in tgt_pk_values}
+                sample_vals = [str(row.get(col, "")).strip() for row in src_sample_rows[:20] if row.get(col) not in (None, "")]
+                if len(sample_vals) >= 2:
+                    matched = sum(1 for v in sample_vals if self._normalize_fk_value(v) in tgt_norm)
+                    if matched >= 2 and matched / len(sample_vals) >= 0.5:
+                        rel_name = re.sub(r'(?<=[a-z0-9])(?=[A-Z])', '_', tgt_entity_class).upper()
+                        rel_name = re.sub(r'[^A-Z0-9_]', '', rel_name) or "REF"
+                        candidates.append((col, f"HAS_{rel_name}"))
+                        continue
 
             if src_sample_rows and len(src_sample_rows) > 0:
                 sample_vals = [str(row.get(col, "")) for row in src_sample_rows[:10] if row.get(col)]

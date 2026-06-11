@@ -1,4 +1,4 @@
-"""ChromaDB 벡터 데이터베이스 서비스"""
+"""ChromaDB 向量数据库服务"""
 from __future__ import annotations
 import json
 import logging
@@ -13,7 +13,7 @@ except ImportError:
 
 
 class ChromaService:
-    """ChromaDB 연결 및 벡터 저장/검색 서비스"""
+    """ChromaDB 连接与向量存储/检索服务"""
 
     def __init__(self, host: str | None = None, port: int | None = None):
         from app.config import settings
@@ -39,10 +39,10 @@ class ChromaService:
     def available(self) -> bool:
         return self._available
 
-    # ── 컬렉션 관리 ──────────────────────────────────────────────────
+    # ── 集合管理 ────────────────────────────────────────────────────
 
     def get_or_create_collection(self, name: str) -> Any | None:
-        """컬렉션 반환 또는 생성 (코사인 거리 사용)"""
+        """返回或创建集合 (使用余弦距离)"""
         if not self._available:
             return None
         try:
@@ -63,10 +63,10 @@ class ChromaService:
         except Exception:
             return False
 
-    # ── 쓰기 ─────────────────────────────────────────────────────────
+    # ── 写入 ────────────────────────────────────────────────────────
 
     def upsert_entities(self, ontology_id: str, entities: list[dict]) -> int:
-        """엔티티를 컬렉션에 업서트 (텍스트 임베딩 자동)"""
+        """将实体 upsert 到集合 (自动文本嵌入)"""
         if not self._available or not entities:
             return 0
         collection = self.get_or_create_collection(f"ontology_{ontology_id}")
@@ -93,7 +93,7 @@ class ChromaService:
             return 0
 
     def delete_entities(self, ontology_id: str, entity_ids: list[str]) -> bool:
-        """지정 ID의 엔티티 삭제"""
+        """删除指定 ID 的实体"""
         if not self._available:
             return False
         collection = self.get_or_create_collection(f"ontology_{ontology_id}")
@@ -105,7 +105,7 @@ class ChromaService:
         except Exception:
             return False
 
-    # ── 검색 ─────────────────────────────────────────────────────────
+    # ── 检索 ────────────────────────────────────────────────────────
 
     def semantic_search(
         self,
@@ -114,7 +114,7 @@ class ChromaService:
         n_results: int = 10,
         entity_type: str | None = None,
     ) -> list[dict]:
-        """시맨틱 검색 — ChromaDB 벡터 유사도 검색"""
+        """语义检索 — ChromaDB 向量相似度搜索"""
         if not self._available:
             return []
         collection = self.get_or_create_collection(f"ontology_{ontology_id}")
@@ -155,7 +155,7 @@ class ChromaService:
         keyword: str,
         n_results: int = 20,
     ) -> list[dict]:
-        """키워드 검색 — document에 keyword가 포함된 결과 필터링"""
+        """关键词检索 — 过滤 document 中包含 keyword 的结果"""
         if not self._available:
             return []
         collection = self.get_or_create_collection(f"ontology_{ontology_id}")
@@ -181,7 +181,7 @@ class ChromaService:
             return []
 
     def count(self, ontology_id: str) -> int:
-        """컬렉션 내 문서 수"""
+        """集合内文档数"""
         if not self._available:
             return 0
         collection = self.get_or_create_collection(f"ontology_{ontology_id}")
@@ -194,7 +194,7 @@ class ChromaService:
 
     @staticmethod
     def _entity_to_text(entity: dict) -> str:
-        """엔티티 → 임베딩용 텍스트 변환"""
+        """实体 → 嵌入用文本转换"""
         parts = [
             entity.get("name_cn", ""),
             entity.get("name_en", ""),

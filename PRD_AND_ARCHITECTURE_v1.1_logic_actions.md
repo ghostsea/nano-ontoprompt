@@ -529,6 +529,36 @@ Step 1: 基本信息              Step 2: 选择数据源            Step 3: Map
 | **⑧ 写入 ChromaDB** | 实体描述、属性、Logic 描述、Action 描述 → 向量嵌入，用于语义搜索和 Agent Tool 选择 | Semantic Search |
 | **⑨ 发布 Logic / Actions** | 将审核通过的规则和动作发布为 runtime 可调用定义，供 UI、API、Agent、自动化任务使用 | Kinetic Layer |
 
+#### F5.1 自动映射引擎
+
+- 输入：一组 curated datasets（每个有 schema + primary key + 数据）
+- 自动推断：
+  - **Object Type**：每个 curated dataset 映射为一个 Object Type
+  - **Properties**：每列映射为 property（自动推断类型：string / number / timestamp / geo / media_reference）
+  - **Link Type**：基于列名匹配和外键检测自动推断 dataset 之间的关系（如 orders.customer_id → customers.customer_id）
+  - **Cardinality**：自动推断 One-to-many / Many-to-many
+- LLM 辅助：当自动推断不确定时（如多个候选外键），调用 LLM 分析列名和样本数据，给出推荐
+- 用户确认 / 修改映射方案后执行
+
+#### F5.2 Neo4j 图谱存储与展示
+
+- Ontology 对象（Object Type、Object、Link）持久化存储到 Neo4j
+  - Node = Object，Label = Object Type 名称，Properties = Property 值
+  - Relationship = Link，Type = Link Type 名称
+- 图谱可视化：基于 Neo4j 的交互式图谱界面
+  - 支持 Cypher 查询
+  - 支持按 Object Type 筛选 / 搜索 / 展开
+  - 支持 schema-level 视图（只看 Object Type 和 Link Type 的骨架）和 instance-level 视图（看具体 Object）
+
+#### F5.3 ChromaDB 向量检索
+
+- 每个 Object 的 properties 拼接为文本，调用 embedding 模型生成向量
+- 向量存入 ChromaDB collection（一个 Object Type 一个 collection）
+- 支持：
+  - 语义搜索：输入自然语言查询，返回最相关的 Object
+  - 相似对象发现：选中一个 Object，找到最相似的 N 个
+  - 跨 Object Type 搜索：在所有 collection 中搜索
+
 #### 2.4.2.1 Logic & Actions 构建机制（新增）
 
 > 设计原则：Entities 和 Relations 是从数据中 **映射** 出来的；Logic 是从 schema、关系、质量约束和业务语义中 **归纳** 出来的；Actions 是从对象状态变化、用户任务和系统写回需求中 **设计** 出来的。
@@ -636,6 +666,137 @@ Publish Runtime Definitions
     {"type": "webhook", "target": "risk-system", "condition": "review_result = 'rejected'"}
   ]
 }
+```
+
+#### F5.4 Logic 层：Functions（逻辑计算）
+
+> **来源：** Palantir 的 Functions 层允许用 TypeScript / Python 编写运行在 Ontology 数据之上的逻辑代码。Functions 可以读取对象和属性、计算派生值、自定义聚合、查询外部系统，以及在配置为 function-backed action 时编辑对象。
+
+NanoOntoprompt 的 Logic 层翻译为以下功能：
+
+**F5.4.1 Derived Properties（派生属性）**
+
+- 从现有属性计算出新属性，不存储为原始数据，而是查询时实时计算
+- 定义方式：
+  - **表达式编辑器**（无代码）：选择源属性 + 运算符 + 目标，如 `full_name = first_name + " " + last_name`
+  - **Python 表达式**（高级）：直接写 Python lambda，如 `lambda obj: obj.departure_time - obj.scheduled_time`
+  - **LLM 辅助生成**：用自然语言描述想要的派生逻辑，LLM 自动生成表达式（如"计算每个航班的延误分钟数"→ 自动生成计算公式）
+- 示例：
+
+| Derived Property | 表达式 | 源 Object Type |
+|---|---|---|
+| delay_minutes | (actual_departure - scheduled_departure).minutes | Flight |
+| full_name | first_name + " " + last_name | Passenger |
+| is_overdue | today() - maintenance_date > 365 days | Aircraft |
+| booking_count | count(linked_bookings) | Passenger |
+
+**F5.4.2 Validation Rules（业务约束规则）**
+
+- 定义数据必须满足的业务约束条件
+- 用于两个场景：① 数据入库时的自动校验 ② Action 执行前的前置条件检查
+- 定义方式：Rule Builder 界面，选择属性 + 条件 + 阈值
+- 示例：
+
+| Rule 名称 | 条件 | 违规时行为 |
+|---|---|---|
+| future_departure | Flight.departure_time > now() | 标记为异常，进入复核队列 |
+| valid_tail_number | Aircraft.tail_number matches `B-\d{4}` | 阻止入库 |
+| max_seat_capacity | Booking.seat_count <= Flight.capacity | 阻止 Action 提交 |
+
+**F5.4.3 Computed Aggregations（计算聚合）**
+
+- 跨 Object 的聚合指标，用于仪表盘和图谱展示
+- 支持：count、sum、avg、min、max、custom
+- 示例：`avg_delay_per_airline = AVG(Flight.delay_minutes) GROUP BY Flight.airline`
+- 可在 Neo4j 图谱中展示为 Object Type 级别的摘要属性
+
+#### F5.5 Action Types 层：写操作定义
+
+> **来源：** Palantir 的 Action Type 由四个组件构成——Parameters（参数）、Rules（规则，定义对 Ontology 的编辑操作）、Submission Criteria（提交条件，编码业务权限和约束）、Side Effects（副作用，如通知和 Webhook）。简单 Action 通过 UI 配置即可，复杂逻辑通过 function-backed action 用代码实现。
+
+**F5.5.1 Action Type 定义**
+
+每个 Action Type 由以下组件构成：
+
+```
+Action Type: "Rebook Passenger"
+├── Parameters（输入）
+│   ├── passenger: Object Reference (Passenger)    -- 必填
+│   ├── old_flight: Object Reference (Flight)       -- 必填
+│   ├── new_flight: Object Reference (Flight)       -- 必填
+│   └── reason: String (enum: schedule_change / customer_request / weather)
+│
+├── Rules（执行逻辑）
+│   ├── Modify: Booking.flight_id = new_flight.flight_id
+│   ├── Delete Link: Booking → old_flight
+│   ├── Create Link: Booking → new_flight
+│   └── Modify: Booking.updated_at = now()
+│
+├── Submission Criteria（前置条件）
+│   ├── new_flight.status != "Cancelled"
+│   ├── new_flight.available_seats > 0
+│   └── current_user.role IN ["agent", "supervisor"]
+│
+└── Side Effects（副作用）
+    ├── Notification → passenger.email: "Your flight has been changed to {new_flight.flight_id}"
+    └── Webhook → crew_management_api: POST /rebookings
+```
+
+**F5.5.2 Action Type 构建方式**
+
+三种方式，覆盖不同用户层次：
+
+| 构建方式 | 适用场景 | 操作方式 |
+|---|---|---|
+| **Auto-suggest（自动推荐）** | Ontology Schema 建好后 | 系统基于 Object Types 和 Link Types 自动推荐常见 Action（如 Create Flight、Modify Status、Link Booking→Flight） |
+| **Rule Builder（可视化配置）** | 标准业务操作 | UI 界面：选操作类型 → 选目标 Object Type → 配置 Parameters → 设置 Rules → 定义 Submission Criteria |
+| **LLM 辅助生成** | 用自然语言描述 | 输入"只有管理员可以删除过期航班"，LLM 自动生成完整的 Action Type 配置（含 Parameters + Rules + Submission Criteria） |
+
+**F5.5.3 Auto-Suggest 的推荐规则**
+
+当 Ontology mapping 完成后，系统基于以下规则自动生成 Action Type 建议：
+
+- 每个 Object Type → 推荐 `Create [ObjectType]` 和 `Edit [ObjectType] properties` 两个基础 Action
+- 每个 Link Type → 推荐 `Link [A] to [B]` 和 `Unlink [A] from [B]`
+- 如果存在 status / state 类属性 → 推荐 `Change [ObjectType] status`（含 enum 约束）
+- 如果存在 timestamp 类属性 → 推荐 `Update [ObjectType] timestamp`
+- 用户可以接受 / 修改 / 删除任何推荐的 Action
+
+**F5.5.4 Writeback 隔离**
+
+- 所有 Action 执行的编辑写入 **Writeback 记录**（独立于 curated dataset）
+- 每条 Writeback 记录包含：action_type、执行人、执行时间、修改前值、修改后值、状态
+- Writeback 记录可被审计、回滚
+- 在 Ontology 查询时，系统自动合并 curated dataset 数据和 Writeback 记录，展示最终状态
+- 冲突解决策略：Writeback 记录优先于 curated dataset（用户手动修改 > 系统同步数据）
+
+**F5.5.5 Action 执行时序**
+
+```
+用户在 UI 点击 "Rebook Passenger"
+  → Form 渲染（基于 Parameters 定义）
+  → 用户填入参数
+  → Submission Criteria 校验
+     ├── PASS → 执行 Rules → 写入 Writeback → 触发 Side Effects → 更新 Neo4j 索引
+     └── FAIL → 展示失败原因（"目标航班已取消" / "无权限"）
+```
+
+#### F5.6 Logic & Actions 的整体交互
+
+```
+Curated Datasets
+  → Ontology 自动映射（Object Types, Properties, Link Types）
+  → Logic 层自动推荐
+  │   ├── Derived Properties 建议（基于列名语义分析）
+  │   ├── Validation Rules 建议（基于数据类型和分布）
+  │   └── Aggregation 建议（基于 Link 关系）
+  → Action Types 自动推荐
+  │   ├── CRUD Actions（基于 Object Types）
+  │   ├── Link Actions（基于 Link Types）
+  │   └── Status Actions（基于 enum 属性）
+  → 用户确认 / 修改 / 补充
+  → 持久化到 Neo4j（Schema + Rules + Actions 配置）
+  → 上线运行（用户通过 UI 执行 Actions，Logic 层实时计算）
 ```
 
 ##### F. Runtime 执行语义

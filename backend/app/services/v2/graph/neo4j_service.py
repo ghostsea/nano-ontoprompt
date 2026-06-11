@@ -1,6 +1,7 @@
-"""Neo4j 그래프 데이터베이스 서비스"""
+"""Neo4j 图数据库服务"""
 from __future__ import annotations
 import logging
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -10,12 +11,23 @@ try:
 except ImportError:  # pragma: no cover
     GraphDatabase = None  # type: ignore
 
+# 连接失败后多少秒内不再重试（避免每个请求都白等连接超时）
+_RETRY_INTERVAL = 60.0
+
 
 class Neo4jService:
-    """Neo4j 연결 및 CRUD 서비스"""
+    """Neo4j 连接与 CRUD 服务
+
+    使用默认配置时全进程共享同一个 driver（neo4j driver 线程安全），
+    避免每个请求重建连接；连接失败后 60 秒内直接判定不可用。
+    """
+
+    _shared_driver = None
+    _shared_unavailable_until: float = 0.0
 
     def __init__(self, uri: str | None = None, user: str | None = None, password: str | None = None):
         from app.config import settings
+        self._is_default_config = uri is None and user is None and password is None
         self._uri = uri or settings.neo4j_uri
         self._user = user or settings.neo4j_user
         self._password = password or settings.neo4j_password
@@ -24,31 +36,46 @@ class Neo4jService:
         self._init_driver()
 
     def _init_driver(self):
+        cls = Neo4jService
+        if self._is_default_config:
+            if cls._shared_driver is not None:
+                self._driver = cls._shared_driver
+                self._available = True
+                return
+            if time.monotonic() < cls._shared_unavailable_until:
+                return
         try:
             if GraphDatabase is None:
                 raise RuntimeError("neo4j package not installed")
-            self._driver = GraphDatabase.driver(
-                self._uri, auth=(self._user, self._password)
+            driver = GraphDatabase.driver(
+                self._uri, auth=(self._user, self._password),
+                connection_timeout=3.0,
             )
-            self._driver.verify_connectivity()
+            driver.verify_connectivity()
+            self._driver = driver
             self._available = True
+            if self._is_default_config:
+                cls._shared_driver = driver
             logger.info("Neo4j connected")
         except Exception as e:
             logger.warning(f"Neo4j unavailable: {e}")
             self._available = False
+            if self._is_default_config:
+                cls._shared_unavailable_until = time.monotonic() + _RETRY_INTERVAL
 
     @property
     def available(self) -> bool:
         return self._available
 
     def close(self):
-        if self._driver:
+        # 共享 driver 不在此关闭（其他请求仍在使用）
+        if self._driver is not None and self._driver is not Neo4jService._shared_driver:
             self._driver.close()
 
-    # ── 쓰기 ────────────────────────────────────────────────────────
+    # ── 写入 ────────────────────────────────────────────────────────
 
     def upsert_entity(self, label: str, props: dict, key_field: str = "id") -> str | None:
-        """엔티티 MERGE — 존재하면 업데이트, 없으면 생성"""
+        """实体 MERGE — 存在则更新, 不存在则创建"""
         if not self._available:
             return None
         query = f"""
@@ -64,7 +91,7 @@ class Neo4jService:
 
     def upsert_relation(self, src_label: str, src_key: str, tgt_label: str, tgt_key: str,
                         rel_type: str, props: dict | None = None, key_field: str = "id") -> bool:
-        """관계 MERGE"""
+        """关系 MERGE"""
         if not self._available:
             return False
         query = f"""
@@ -79,7 +106,7 @@ class Neo4jService:
             return result.single() is not None
 
     def batch_upsert_entities(self, label: str, entities: list[dict], key_field: str = "id") -> int:
-        """배치 MERGE — 1000건씩 처리"""
+        """批量 MERGE — 每批 1000 条"""
         if not self._available or not entities:
             return 0
         query = f"""
@@ -97,10 +124,10 @@ class Neo4jService:
                 count += len(chunk)
         return count
 
-    # ── 읽기 ────────────────────────────────────────────────────────
+    # ── 读取 ────────────────────────────────────────────────────────
 
     def run_cypher(self, query: str, params: dict | None = None) -> list[dict]:
-        """Cypher 쿼리 실행"""
+        """执行 Cypher 查询"""
         if not self._available:
             return []
         with self._driver.session() as session:
@@ -109,7 +136,7 @@ class Neo4jService:
 
     def get_graph_data(self, ontology_id: str, limit: int = 200,
                        label_filter: str | None = None) -> dict:
-        """그래프 시각화용 노드/엣지 데이터 반환 (分两步查询避免 LIMIT 吞掉边)"""
+        """返回图谱可视化用节点/边数据 (分两步查询避免 LIMIT 吞掉边)"""
         if not self._available:
             return {"nodes": [], "edges": []}
 
@@ -165,7 +192,7 @@ class Neo4jService:
         return {"nodes": list(nodes_map.values()), "edges": edges}
 
     def delete_by_ontology(self, ontology_id: str) -> int:
-        """ontology_id에 연결된 모든 노드/관계 삭제"""
+        """删除 ontology_id 关联的所有节点/关系"""
         if not self._available:
             return 0
         query = """
@@ -180,5 +207,5 @@ class Neo4jService:
 
 
 def get_neo4j_service() -> Neo4jService:
-    """싱글턴 팩토리"""
+    """单例工厂"""
     return Neo4jService()

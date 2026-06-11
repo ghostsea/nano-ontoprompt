@@ -1,6 +1,6 @@
 """
-v1 로컬 파일 저장 ↔ MinIO 호환 어댑터.
-v1 코드가 로컬 경로로 저장한 파일을 MinIO로 동기화할 때 사용합니다.
+v1 本地文件存储 ↔ MinIO 兼容适配器。
+用于将 v1 代码存储在本地路径的文件同步到 MinIO。
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from app.services.storage_service import StorageService, get_storage_service
 
 
 class LegacyFileAdapter:
-    """v1의 로컬 uploads/ 파일을 MinIO media 버킷으로 복사합니다."""
+    """将 v1 本地 uploads/ 文件复制到 MinIO media 桶。"""
 
     BUCKET = "media"
 
@@ -21,7 +21,7 @@ class LegacyFileAdapter:
 
     def upload_from_local(self, local_path: str, key_prefix: str = "legacy") -> str:
         """
-        로컬 파일을 MinIO로 업로드하고 URI를 반환합니다.
+        将本地文件上传到 MinIO 并返回 URI。
         key: {key_prefix}/{filename}
         """
         path = Path(local_path)
@@ -38,7 +38,7 @@ class LegacyFileAdapter:
         return uri
 
     def get_local_path(self, filename: str) -> str:
-        """v1 업로드 디렉터리 내 파일의 전체 경로를 반환합니다."""
+        """返回 v1 上传目录中文件的完整路径。"""
         return os.path.join(settings.uploads_dir, filename)
 
     @staticmethod
