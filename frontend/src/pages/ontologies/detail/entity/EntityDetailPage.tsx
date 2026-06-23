@@ -120,6 +120,12 @@ export default function EntityDetailPage() {
     enabled: !!oid,
   })
 
+  const { data: relatedData } = useQuery({
+    queryKey: ['entity-related', oid, eid],
+    queryFn: () => ontologyApi.getEntityRelated(oid!, eid!),
+    enabled: !!oid && !!eid,
+  })
+
   const updateMut = useMutation({
     mutationFn: (data: Partial<Entity>) => ontologyApi.updateEntity(oid!, eid!, data),
     onSuccess: () => {
@@ -177,23 +183,16 @@ export default function EntityDetailPage() {
   const incomingEdges = edges.filter(e => e.data.target === eid)
   const outgoingEdges = edges.filter(e => e.data.source === eid)
 
-  // Logic rules that have this entity in their linked_entities
-  const relatedLogic = (allLogic as LogicRule[]).filter(r =>
-    (r.linked_entities ?? []).includes(entity.name_cn) ||
-    (entity.name_en ? (r.linked_entities ?? []).includes(entity.name_en) : false)
-  )
-  const unlinkedLogic = (allLogic as LogicRule[]).filter(r =>
-    !(r.linked_entities ?? []).includes(entity.name_cn)
-  )
+  // linked_entities 可能存实体显示名(简易 LLM)或实体类型名(Pipeline Mapping),
+  // 两者都匹配。
+  const matchKeys = [entity.name_cn, entity.name_en, entity.type].filter(Boolean) as string[]
+  const linkedHit = (linked?: string[]) => (linked ?? []).some(x => matchKeys.includes(x))
 
-  // Actions that have this entity in their linked_entities
-  const relatedActions = (allActions as Action[]).filter(a =>
-    a.linked_entities?.includes(entity.name_cn) ||
-    (entity.name_en && a.linked_entities?.includes(entity.name_en))
-  )
-  const unlinkedActions = (allActions as Action[]).filter(a =>
-    !a.linked_entities?.includes(entity.name_cn)
-  )
+  const relatedLogic = (allLogic as LogicRule[]).filter(r => linkedHit(r.linked_entities))
+  const unlinkedLogic = (allLogic as LogicRule[]).filter(r => !linkedHit(r.linked_entities))
+
+  const relatedActions = (allActions as Action[]).filter(a => linkedHit(a.linked_entities))
+  const unlinkedActions = (allActions as Action[]).filter(a => !linkedHit(a.linked_entities))
 
   // Property helpers
   const props = (entity.properties ?? {}) as Record<string, unknown>
@@ -522,6 +521,62 @@ export default function EntityDetailPage() {
           color="purple"
         />
       </div>
+
+      {/* Related Logic Rules (from /related endpoint) */}
+      {(relatedData?.logic ?? []).length > 0 && (
+        <div className="bg-white border rounded-xl p-6">
+          <div className="mt-0 border-t-0">
+            <h3 className="text-sm font-medium text-gray-700 mb-3">
+              关联逻辑规则（{relatedData!.logic.length}）
+            </h3>
+            <div className="space-y-2">
+              {relatedData!.logic.map((lr: any) => (
+                <Link
+                  key={lr.id}
+                  to={`/ontologies/${oid}/logic/${lr.id}`}
+                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div>
+                    <span className="text-sm font-medium">{lr.name_cn}</span>
+                    {lr.name_en && <span className="text-xs text-gray-400 ml-2">{lr.name_en}</span>}
+                    {lr.formula && <p className="text-xs text-gray-500 mt-0.5 font-mono truncate max-w-sm">{lr.formula}</p>}
+                  </div>
+                  <span className="text-xs text-gray-400 shrink-0 ml-2">
+                    置信度 {((lr.confidence ?? 1) * 100).toFixed(0)}%
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Related Actions (from /related endpoint) */}
+      {(relatedData?.actions ?? []).length > 0 && (
+        <div className="bg-white border rounded-xl p-6">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">
+            关联动作（{relatedData!.actions.length}）
+          </h3>
+          <div className="space-y-2">
+            {relatedData!.actions.map((ac: any) => (
+              <Link
+                key={ac.id}
+                to={`/ontologies/${oid}/actions/${ac.id}`}
+                className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium">{ac.name_cn}</span>
+                  {ac.name_en && <span className="text-xs text-gray-400 ml-2">{ac.name_en}</span>}
+                  {ac.description && <p className="text-xs text-gray-500 mt-0.5 truncate">{ac.description}</p>}
+                </div>
+                <span className="text-xs text-gray-400 shrink-0 ml-2">
+                  置信度 {((ac.confidence ?? 1) * 100).toFixed(0)}%
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirm */}
       {showDeleteConfirm && (

@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react'
+
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ontologyApi } from '@/api/ontologies'
 import ConfidenceBar from '@/components/ConfidenceBar'
-import { Pencil, Trash2, Plus, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
+import { Pencil, Trash2, Plus, ArrowUp, ArrowDown, ArrowUpDown, Search } from 'lucide-react'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import type { Entity } from '@/types/ontology'
 import { parseEntityDisplay } from '@/utils/entityDisplay'
 
@@ -16,7 +18,9 @@ export default function EntitiesTab({ ontologyId }: { ontologyId: string }) {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [showCreate, setShowCreate] = useState(false)
+  const [searchQ, setSearchQ] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<Entity | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('name_cn')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const { register, handleSubmit, reset } = useForm<Partial<Entity>>()
@@ -119,6 +123,38 @@ export default function EntitiesTab({ ontologyId }: { ontologyId: string }) {
             </span>
           )}
         </div>
+  const allTypes = useMemo(() => {
+    const s = new Set<string>()
+    ;(entities as Entity[]).forEach(e => { if (e.type) s.add(e.type) })
+    return Array.from(s).sort()
+  }, [entities])
+
+  const filtered = useMemo(() => {
+    const q = searchQ.trim().toLowerCase()
+    return (entities as Entity[]).filter(e => {
+      const matchQ = !q || e.name_cn?.toLowerCase().includes(q) || e.name_en?.toLowerCase().includes(q) || e.type?.toLowerCase().includes(q)
+      const matchType = !typeFilter || e.type === typeFilter
+      return matchQ && matchType
+    })
+  }, [entities, searchQ, typeFilter])
+
+  return (
+    <div className="space-y-4">
+      {/* Search bar */}
+      <div className="flex gap-2 items-center">
+        <div className="relative flex-1">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input value={searchQ} onChange={e => setSearchQ(e.target.value)}
+            placeholder="搜索名称 / 类型…"
+            className="w-full border rounded-lg pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black" />
+        </div>
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
+          className="border rounded-lg px-3 py-2 text-sm text-gray-600">
+          <option value="">全部类型</option>
+          {allTypes.map(tp => <option key={tp} value={tp}>{tp}</option>)}
+        </select>
+      </div>
+      <div className="flex justify-end">
         <button onClick={() => { setShowCreate(true); reset() }}
           className="flex items-center gap-2 px-3 py-2 bg-black text-white rounded-lg text-sm">
           <Plus size={14} /> {t('entities.add')}
@@ -150,6 +186,7 @@ export default function EntitiesTab({ ontologyId }: { ontologyId: string }) {
                 const { labelCn, abbr } = parseEntityDisplay(e)
                 const displayAbbr = e.name_abbr?.trim() || abbr
                 return (
+              {filtered.map(e => (
                 <tr key={e.id} className="border-b hover:bg-gray-50 cursor-pointer"
                   onClick={() => navigate(`/ontologies/${ontologyId}/entities/${e.id}`)}>
                   <td className="px-4 py-3 font-medium">{labelCn}</td>
@@ -159,17 +196,19 @@ export default function EntitiesTab({ ontologyId }: { ontologyId: string }) {
                   <td className="px-4 py-3 text-gray-500">{e.type || '—'}</td>
                   <td className="px-4 py-3 text-gray-500 max-w-xs truncate">{e.description || '—'}</td>
                   <td className="px-4 py-3 w-32"><ConfidenceBar value={e.confidence} /></td>
-                  <td className="px-4 py-3 space-x-2" onClick={ev => ev.stopPropagation()}>
-                    <button onClick={() => navigate(`/ontologies/${ontologyId}/entities/${e.id}`)} className="text-blue-500 hover:text-blue-700"><Pencil size={14} /></button>
-                    <button onClick={() => deleteMut.mutate(e.id)} className="text-red-500 hover:text-red-700"><Trash2 size={14} /></button>
+                  <td className="px-4 py-3" onClick={ev => ev.stopPropagation()}>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => navigate(`/ontologies/${ontologyId}/entities/${e.id}`)} title={t('common.edit')} className="p-1.5 rounded text-blue-500 hover:bg-blue-50"><Pencil size={14} /></button>
+                      <button onClick={() => setDeleteTarget(e)} title={t('common.delete')} className="p-1.5 rounded text-red-500 hover:bg-red-50"><Trash2 size={14} /></button>
+                    </div>
                   </td>
                 </tr>
               )})}
             </tbody>
           </table>
         )}
-        {!isLoading && entityList.length === 0 && (
-          <p className="text-center text-gray-400 py-8">{t('entities.empty')}</p>
+        {!isLoading && filtered.length === 0 && (
+          <p className="text-center text-gray-400 py-8">{searchQ || typeFilter ? '无匹配结果' : t('entities.empty')}</p>
         )}
         {!isLoading && entityList.length > 0 && displayedEntities.length === 0 && (
           <p className="text-center text-gray-400 py-8">{t('entities.no_match')}</p>
@@ -197,6 +236,14 @@ export default function EntitiesTab({ ontologyId }: { ontologyId: string }) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title={t('entities.delete_title')}
+        message={t('entities.delete_confirm', { name: deleteTarget?.name_cn ?? '' })}
+        onConfirm={() => { if (deleteTarget) deleteMut.mutate(deleteTarget.id); setDeleteTarget(null) }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

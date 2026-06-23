@@ -100,6 +100,44 @@ function saveTask(oid: string, data: SavedTask) {
   try {
     localStorage.setItem(lastTaskKey(oid), JSON.stringify(data))
   } catch {}
+function PipelineMappingInfo({ ontology }: { ontology: OntologyDetail }) {
+  const [mappings, setMappings] = useState<any[]>([])
+  useEffect(() => {
+    import('@/api/client').then(({ apiClientV2 }) => {
+      apiClientV2.get(`/ontologies/${ontology.id}/mappings`)
+        .then((res: any) => setMappings(Array.isArray(res) ? res : []))
+        .catch(() => setMappings([]))
+    })
+  }, [ontology.id])
+
+  return (
+    <div className="bg-white rounded-xl border p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-semibold">Pipeline Mapping 状态</span>
+        <span className="px-2 py-0.5 rounded text-xs bg-blue-50 border border-blue-200 text-blue-700">🔄 Pipeline 模式</span>
+      </div>
+      {mappings.length === 0 ? (
+        <p className="text-sm text-gray-400">暂无 Mapping 配置。请先在 Pipelines → Curated Datasets 中审批数据，然后在新建本体时配置 Mapping。</p>
+      ) : (
+        <div className="space-y-2">
+          {mappings.map((m: any) => (
+            <div key={m.mapping_id || m.id} className="border rounded-lg px-3 py-2 text-sm flex items-center justify-between">
+              <div>
+                <span className="font-medium">{m.entity_class}</span>
+                {m.entity_class_cn && <span className="text-gray-400 ml-2">({m.entity_class_cn})</span>}
+              </div>
+              <span className={`text-xs px-1.5 py-0.5 rounded border ${m.status === 'active' ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200 text-gray-500'}`}>
+                {m.status || 'draft'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="pt-2 border-t flex gap-2">
+        <a href="/pipelines/curated" className="text-xs text-blue-600 hover:underline">→ 查看 Curated Datasets</a>
+      </div>
+    </div>
+  )
 }
 
 export default function InfoTab({ ontology }: { ontology: OntologyDetail }) {
@@ -213,10 +251,38 @@ export default function InfoTab({ ontology }: { ontology: OntologyDetail }) {
   const currentPct = taskStatus?.progress?.pct ?? 0
   const currentStage = taskStatus?.progress?.stage ?? ''
 
+  const isPipelineMode = ontology.build_mode === 'pipeline_mapping'
+
   return (
     <div className="space-y-5">
-      {/* LLM Config */}
+      {/* Basic Info */}
       <div className="bg-white rounded-xl border p-6">
+        <h3 className="font-semibold mb-4">{t('ontology.tabs.info')}</h3>
+        <dl className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
+          <div><dt className="text-xs text-gray-500 mb-0.5">{t('ontology.name')}</dt><dd className="font-medium">{ontology.name}</dd></div>
+          <div><dt className="text-xs text-gray-500 mb-0.5">{t('ontology.domain')}</dt><dd>{ontology.domain}</dd></div>
+          <div><dt className="text-xs text-gray-500 mb-0.5">{t('ontology.version')}</dt><dd className="font-mono">{ontology.version}</dd></div>
+          <div><dt className="text-xs text-gray-500 mb-0.5">{t('ontology.status')}</dt><dd>{ontology.status}</dd></div>
+          <div>
+            <dt className="text-xs text-gray-500 mb-0.5">构建方式</dt>
+            <dd>
+              {isPipelineMode
+                ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-blue-50 border border-blue-200 text-blue-700">🔄 Pipeline Mapping</span>
+                : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-amber-50 border border-amber-200 text-amber-700">⚡ 简易 LLM 提取</span>
+              }
+            </dd>
+          </div>
+          {ontology.description && (
+            <div className="col-span-2"><dt className="text-xs text-gray-500 mb-0.5">{t('ontology.desc_optional')}</dt><dd className="text-gray-700">{ontology.description}</dd></div>
+          )}
+        </dl>
+      </div>
+
+      {/* Pipeline Mapping 状态（仅 pipeline_mapping 模式显示） */}
+      {isPipelineMode && <PipelineMappingInfo ontology={ontology} />}
+
+      {/* LLM Config（仅简易模式显示） */}
+      {!isPipelineMode && <div className="bg-white rounded-xl border p-6">
         <div className="flex items-center gap-2 mb-4">
           <h3 className="font-semibold">{t('extract.llm_config')}</h3>
           {activeConstraints.length > 0 && (
@@ -275,10 +341,10 @@ export default function InfoTab({ ontology }: { ontology: OntologyDetail }) {
             )}
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Extraction Progress */}
-      {taskStatus && (
+      {!isPipelineMode && taskStatus && (
         <div className={`bg-white rounded-xl border p-6 ${taskStatus.status === 'failed' ? 'border-red-200 bg-red-50' : ''}`}>
           <h3 className="font-semibold mb-4">{t('extract.progress')}</h3>
 
@@ -348,7 +414,7 @@ export default function InfoTab({ ontology }: { ontology: OntologyDetail }) {
       )}
 
       {/* Validation Report */}
-      {taskStatus?.validation_report && (
+      {!isPipelineMode && taskStatus?.validation_report && (
         <ValidationReportCard report={taskStatus.validation_report} />
       )}
 
