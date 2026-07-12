@@ -40,7 +40,11 @@ function modelList(text?: string) {
 
 function parseOptions(text?: string) {
   if (!text?.trim()) return {}
-  return JSON.parse(text)
+  try {
+    return JSON.parse(text)
+  } catch {
+    return {}
+  }
 }
 
 function buildPayload(data: any, usageTags: string[]) {
@@ -83,9 +87,11 @@ export default function ModelsPage() {
     queryKey: ['models'], queryFn: () => modelApi.list() as any,
   })
 
+  const [createError, setCreateError] = useState('')
   const createMut = useMutation({
     mutationFn: (data: any) => modelApi.create(buildPayload(data, formTags)),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['models'] }); setShowCreate(false); reset(); setFormTags([]) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['models'] }); setShowCreate(false); reset(); setFormTags([]); setCreateError('') },
+    onError: (err: any) => setCreateError(err?.response?.data?.detail || err?.detail || err?.message || '保存失败'),
   })
 
   const deleteMut = useMutation({
@@ -175,9 +181,9 @@ export default function ModelsPage() {
       </div>
 
       {/* 新建弹窗 */}
-      {showCreate && <ModelFormModal title="新建模型" onClose={() => setShowCreate(false)} onSubmit={(d: any) => createMut.mutate(d)}
+      {showCreate && <ModelFormModal title="新建模型" onClose={() => { setShowCreate(false); setCreateError('') }} onSubmit={(d: any) => createMut.mutate(d)}
         isPending={createMut.isPending} formTags={formTags} setFormTags={setFormTags} register={register}
-        handleSubmit={handleSubmit} configType={watch('config_type') || 'llm'} setValue={setCreateValue} />}
+        handleSubmit={handleSubmit} configType={watch('config_type') || 'llm'} setValue={setCreateValue} error={createError} />}
 
       {/* 编辑弹窗 */}
       {editTarget && (
@@ -244,11 +250,12 @@ export default function ModelsPage() {
 }
 
 /** 新建模型表单弹窗 */
-function ModelFormModal({ title, onClose, onSubmit, isPending, formTags, setFormTags, register, handleSubmit, configType, setValue }: any) {
+function ModelFormModal({ title, onClose, onSubmit, isPending, formTags, setFormTags, register, handleSubmit, configType, setValue, error }: any) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-lg p-6 w-[480px]" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-lg shadow-lg p-6 w-[480px] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <h3 className="font-semibold mb-4">{title}</h3>
+        {error && <div className="mb-3 p-2.5 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">{error}</div>}
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
           <div><label className="block text-sm font-medium mb-1">名称 *</label>
             <input {...register('name', { required: true })} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
